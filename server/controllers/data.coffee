@@ -5,6 +5,7 @@ feed = require '../lib/feed'
 dbHelper = require '../lib/db_remove_helper'
 encryption = require '../lib/encryption'
 client = require '../lib/indexer'
+plug = require '../lib/plug'
 
 ## Before and after methods
 
@@ -58,13 +59,14 @@ module.exports.exist = (req, res, next) ->
 
 # GET /data/:id/
 module.exports.find = (req, res) ->
+    console.log 'find data'
     delete req.doc._rev # CouchDB specific, user don't need it
     res.send 200, req.doc
 
 # POST /data/:id/
 # POST /data/
 module.exports.create = (req, res, next) ->
-
+    console.log 'create data'
     delete req.body._attachments # attachments management has a dedicated API
     if req.params.id?
         db.get req.params.id, (err, doc) -> # this GET needed because of cache
@@ -79,17 +81,32 @@ module.exports.create = (req, res, next) ->
                         err.status = 409
                         next err
                     else
-                        res.send 201, _id: doc.id
+                        #Insert the doc into PlugDB
+                        plug.insert req.params.id.split(), (err) ->
+                            if err
+                                err = new Error "Insertion in PlugDB failed"
+                                err.status = 409
+                                next err
+                            else
+                                res.send 201, _id: doc.id
     else
         db.save req.body, (err, doc) ->
             if err
                 next err
             else
-                res.send 201, _id: doc.id
+                #Insert the doc into PlugDB
+                plug.insert req.params.id.split(), (err) ->
+                    if err
+                        err = new Error "Insertion in PlugDB failed"
+                        err.status = 409
+                        next err
+                    else
+                        res.send 201, _id: doc.id
 
 # PUT /data/:id/
 # this doesn't take care of conflict (erase DB with the sent value)
 module.exports.update = (req, res, next) ->
+    console.log 'update data'
     delete req.body._attachments # attachments management has a dedicated API
 
     db.save req.params.id, req.body, (err, response) ->
@@ -101,6 +118,7 @@ module.exports.update = (req, res, next) ->
 # PUT /data/upsert/:id/
 # this doesn't take care of conflict (erase DB with the sent value)
 module.exports.upsert = (req, res, next) ->
+    console.log 'upsert data'
     delete req.body._attachments # attachments management has a dedicated API
 
     db.get req.params.id, (err, doc) ->
@@ -117,6 +135,7 @@ module.exports.upsert = (req, res, next) ->
 # DELETE /data/:id/
 # this doesn't take care of conflict (erase DB with the sent value)
 module.exports.delete = (req, res, next) ->
+    console.log 'delete data'
     id = req.params.id
     send_success = () ->
         res.send 204, success: true
