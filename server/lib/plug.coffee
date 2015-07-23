@@ -19,20 +19,57 @@ init = (callback) ->
   return
 
 #insert docids and associated rules
-insert = (ids, callback) ->
+insertDocs = (ids, callback) ->
   #The js Object needs to be converted into a java String array
   array = java.newArray('java.lang.String', ids)
-  plug.plugInsert array, (err) ->
+  plug.plugInsertDocs array, (err) ->
     callback err
     return
   return
 
-#select start on docs to return the ids
-select = (callback) ->
-  plug.plugSelect (err, result) ->
+ #insert docids and associated rules
+insertDoc = (id, userParams, callback) ->
+  plug.plugInsertDoc id, userParams, (err) ->
+    callback err
+    return
+  return
+
+ #insert docids and associated rules
+insertUser = (id, userParams, callback) ->
+  plug.plugInsertDoc id, userParams, (err) ->
+    callback err
+    return
+  return
+
+#select docs to return the ids
+selectDocs = (callback) ->
+  plug.plugSelectDocs (err, results) ->
+    callback err, results
+    return
+  return
+
+ #select docs to return the ids
+selectUsers = (callback) ->
+  plug.plugSelectUsers (err, results) ->
+    callback err, results
+    return
+  return
+
+#select star on docs to return the ids
+selectSingleDoc = (docid, callback) ->
+  plug.plugSelectSingleDoc docid, (err, result) ->
     callback err, result
     return
   return
+
+#select star on docs to return the ids
+selectSingleUser = (userid, callback) ->
+  plug.plugSelectSingleUser userid, (err, result) ->
+    callback err, result
+    return
+  return
+
+  
 
 #close the connection and save the data on flash
 close = (callback) ->
@@ -49,8 +86,13 @@ authFP = (callback) ->
   return
 
 exports.init = init
-exports.insert = insert
-exports.select = select
+exports.insertDocs = insertDocs
+exports.insertDoc = insertDoc
+exports.insertUser = insertUser
+exports.selectDocs = selectDocs
+exports.selectUsers = selectUsers
+exports.selectSingleDoc = selectSingleDoc
+exports.selectSingleUser = selectSingleUser
 exports.close = close
 exports.authFP = authFP
 

@@ -242,6 +242,18 @@ initializeDSView = (callback) ->
                     return true;
                 }
                 """
+
+        # Usefull to manage sharing rules
+        sharingRules:
+            all:
+                map: """
+                function(doc) {
+                    if(doc.docType && doc.docType.toLowerCase() === "sharingrule") {
+                        return emit(doc._id, doc);
+                    }
+                }
+                """
+
     async.forEach Object.keys(views), (docType, cb) ->
         view = views[docType]
         db.get "_design/#{docType}", (err, doc) ->

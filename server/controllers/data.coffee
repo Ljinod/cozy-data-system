@@ -5,7 +5,10 @@ feed = require '../lib/feed'
 dbHelper = require '../lib/db_remove_helper'
 encryption = require '../lib/encryption'
 client = require '../lib/indexer'
-plug = require '../lib/plug'
+mapDoc = require('../lib/sharing').mapDocOnInsert
+selectDocPlug = require('../lib/sharing').selectDocPlug
+selectUserPlug = require('../lib/sharing').selectUserPlug
+
 
 ## Before and after methods
 
@@ -59,14 +62,24 @@ module.exports.exist = (req, res, next) ->
 
 # GET /data/:id/
 module.exports.find = (req, res) ->
-    console.log 'find data'
     delete req.doc._rev # CouchDB specific, user don't need it
+    ###selectDocPlug req.doc.id, (err, tuple) ->
+        if err?
+            console.log 'Plugdb select failed : ' + err
+        else if tuple
+            console.log 'select doc plugdb : ' + JSON.stringify tuple
+        selectUserPlug req.doc.id, (err, tuple) ->
+            if err?
+                console.log 'Plugdb select failed : ' + err
+            else if tuple
+                console.log 'select user plugdb : ' + JSON.stringify tuple
+    ###
+
     res.send 200, req.doc
 
 # POST /data/:id/
 # POST /data/
 module.exports.create = (req, res, next) ->
-    console.log 'create data'
     delete req.body._attachments # attachments management has a dedicated API
     if req.params.id?
         db.get req.params.id, (err, doc) -> # this GET needed because of cache
@@ -81,32 +94,30 @@ module.exports.create = (req, res, next) ->
                         err.status = 409
                         next err
                     else
-                        #Insert the doc into PlugDB
-                        plug.insert req.params.id.split(), (err) ->
-                            if err
-                                err = new Error "Insertion in PlugDB failed"
-                                err.status = 409
-                                next err
-                            else
-                                res.send 201, _id: doc.id
+                        #map the doc against the sharing rules
+                        mapDoc req.body, doc.id, (err, ids) ->
+                            if err 
+                                console.log 'Error on the mapping : ' + err
+                            else if ids?
+                                console.log 'new doc inserted : ' + ids[0] if ids[0]?
+                                console.log 'new user inserted : ' + ids[1] if ids[1]?
+                        res.send 201, _id: doc.id
     else
         db.save req.body, (err, doc) ->
             if err
                 next err
             else
-                #Insert the doc into PlugDB
-                plug.insert req.params.id.split(), (err) ->
-                    if err
-                        err = new Error "Insertion in PlugDB failed"
-                        err.status = 409
-                        next err
-                    else
-                        res.send 201, _id: doc.id
+                mapDoc req.body, doc.id, (err, ids) ->
+                    if err 
+                        console.log 'Error on the mapping : ' + err
+                    else if ids?
+                        console.log 'new doc inserted : ' + ids[0] if ids[0]?
+                        console.log 'new user inserted : ' + ids[1] if ids[1]?
+                res.send 201, _id: doc.id
 
 # PUT /data/:id/
 # this doesn't take care of conflict (erase DB with the sent value)
 module.exports.update = (req, res, next) ->
-    console.log 'update data'
     delete req.body._attachments # attachments management has a dedicated API
 
     db.save req.params.id, req.body, (err, response) ->
@@ -118,7 +129,6 @@ module.exports.update = (req, res, next) ->
 # PUT /data/upsert/:id/
 # this doesn't take care of conflict (erase DB with the sent value)
 module.exports.upsert = (req, res, next) ->
-    console.log 'upsert data'
     delete req.body._attachments # attachments management has a dedicated API
 
     db.get req.params.id, (err, doc) ->
@@ -135,7 +145,6 @@ module.exports.upsert = (req, res, next) ->
 # DELETE /data/:id/
 # this doesn't take care of conflict (erase DB with the sent value)
 module.exports.delete = (req, res, next) ->
-    console.log 'delete data'
     id = req.params.id
     send_success = () ->
         res.send 204, success: true
@@ -144,7 +153,7 @@ module.exports.delete = (req, res, next) ->
     dbHelper.remove req.doc, (err, res) ->
         if err
             next err
-        else
+        else 
             # Doc is removed from indexation
             client.del "index/#{id}/", (err, response, resbody) ->
                 send_success()
