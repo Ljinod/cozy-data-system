@@ -7,7 +7,7 @@ rules = []
 
 #Insert the doc into PlugDB
 module.exports.mapDocOnInsert = (doc, id, callback) ->
-    mapDocInRules doc, id, (err, results) ->
+    mapDocInRules doc, id, (err, results, shareid) ->
         if err or not results?
             callback err
         else
@@ -15,7 +15,7 @@ module.exports.mapDocOnInsert = (doc, id, callback) ->
                 (_callback) ->
                     # There is a doc result
                     if results[0]
-                        plug.insertDoc results[0].docid, results[0].userDesc, (err) ->
+                        plug.insertDoc results[0].docid, shareid, results[0].userDesc, (err) ->
                             if err? then callback err else callback null, results[0].id
                     else
                         callback null
@@ -23,14 +23,15 @@ module.exports.mapDocOnInsert = (doc, id, callback) ->
                 (_callback) ->
                     # There is an user result
                     if results[1]
-                        plug.insertUser results[1].docid, results[1].userDesc, (err) ->
+                        plug.insertUser results[1].docid, shareid, results[1].userDesc, (err) ->
                             if err? then callback err else callback null, results[1].id
                     else
                         callback null
             ],
-            (err, results) ->
-                callback err, results
-            
+            # insertedIds : [docid, userid], empty case if no insert
+            (err, insertedIds) ->
+                callback err, insertedIds
+
 
 #Select doc into PlugDB
 module.exports.selectDocPlug = (id, callback) ->
@@ -59,21 +60,24 @@ mapDocInRules = (doc, id, callback) ->
                 mapDoc doc, id, rule.filterUser, (filteredUser) ->
                     if filteredUser then console.log 'user maped !! ' + JSON.stringify filteredUser
                     _callback null, filteredUser
-                
-        ], 
-        (err, results) ->
-            if results[0]? || results[1]?
-                console.log 'got a mapping !! ' + JSON.stringify results
-            callback err, results
-        
 
-        
+        ],
+        # filteredRes : [filteredDoc, filteredUser], empty case if no mapping
+        # filteredDoc/User : {id, user_desc}
+        (err, filteredRes) ->
+            if filteredRes[0]? || filteredRes[1]?
+                console.log 'got a mapping !! ' + JSON.stringify filteredRes
+                console.log 'share id : ' + rule.id
+            callback err, filteredRes, rule.id
+
+
+
 
 #Generic map : evaluate the rule in the filter against the doc
 mapDoc = (doc, docid, filter, callback) ->
     console.log 'eval ' + JSON.stringify filter.rule + ' for the doc ' + JSON.stringify doc
     if eval filter.rule
-        user_desc = if filter.userDesc then eval filter.userDesc 
+        user_desc = if filter.userDesc then eval filter.userDesc
         callback {docid, user_desc}
     else
         callback null
@@ -81,16 +85,15 @@ mapDoc = (doc, docid, filter, callback) ->
 
 module.exports.createRule = (doc, callback) ->
 
-
-
 module.exports.deleteRule = (doc, callback) ->
 module.exports.updateRule = (doc, callback) ->
 
 saveRule = (rule, callback) ->
+    id = rule._id
     name = rule.name
     filterDoc = rule.filterDoc
     filterUser = rule.filterUser
-    rules.push {name, filterDoc, filterUser}
+    rules.push {id, name, filterDoc, filterUser}
 
 #Called on the DS initialization
 module.exports.initRules = (callback) ->
@@ -98,4 +101,5 @@ module.exports.initRules = (callback) ->
         return callback new Error("Error in view") if err?
         rules.forEach (rule) ->
             saveRule rule
+
         callback()

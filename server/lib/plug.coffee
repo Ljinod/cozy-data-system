@@ -10,7 +10,7 @@ init = (callback) ->
     timeoutProtect = null
     callback error: 'PlugDB timed out'
     return
-  ), 20000)
+  ), 30000)
   plug.plugInit '/dev/ttyACM0', (err) ->
     if timeoutProtect
       clearTimeout timeoutProtect
@@ -28,15 +28,15 @@ insertDocs = (ids, callback) ->
   return
 
  #insert docids and associated rules
-insertDoc = (id, userParams, callback) ->
-  plug.plugInsertDoc id, userParams, (err) ->
+insertDoc = (docid, shareid, userParams, callback) ->
+  plug.plugInsertDoc docid, shareid, userParams, (err) ->
     callback err
     return
   return
 
  #insert docids and associated rules
-insertUser = (id, userParams, callback) ->
-  plug.plugInsertDoc id, userParams, (err) ->
+insertUser = (userid, shareid, userParams, callback) ->
+  plug.plugInsertDoc docid, shareid, userParams, (err) ->
     callback err
     return
   return
@@ -69,7 +69,7 @@ selectSingleUser = (userid, callback) ->
     return
   return
 
-  
+
 
 #close the connection and save the data on flash
 close = (callback) ->
@@ -78,7 +78,7 @@ close = (callback) ->
     return
   return
 
-#Authenticate by fingerprint 
+#Authenticate by fingerprint
 authFP = (callback) ->
   plug.plugFPAuthentication (err, authID) ->
     callback err, authID
@@ -95,4 +95,3 @@ exports.selectSingleDoc = selectSingleDoc
 exports.selectSingleUser = selectSingleUser
 exports.close = close
 exports.authFP = authFP
-
