@@ -5,18 +5,17 @@ plug = java.newInstanceSync 'org.cozy.plug.Plug'
 
 #initialize PlugDB
 init = (callback) ->
-  # Setup the timeout handler
-  timeoutProtect = setTimeout((->
-    timeoutProtect = null
-    callback error: 'PlugDB timed out'
-    return
-  ), 30000)
-  plug.plugInit '/dev/ttyACM0', (err) ->
-    if timeoutProtect
-      clearTimeout timeoutProtect
-      callback err
-    return
-  return
+    # Setup the timeout handler
+    timeoutProtect = setTimeout((->
+        timeoutProtect = null
+        callback error: 'PlugDB timed out'
+    ), 30000)
+
+    plug.plugInit '/dev/ttyACM0', (err) ->
+        if timeoutProtect
+            clearTimeout timeoutProtect
+            console.log 'PlugDB ready'
+            callback err
 
 #insert docids and associated rules
 insertDocs = (ids, callback) ->

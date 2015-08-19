@@ -7,30 +7,38 @@ rules = []
 
 #Insert the doc into PlugDB
 module.exports.mapDocOnInsert = (doc, id, callback) ->
-    mapDocInRules doc, id, (err, results, shareid) ->
-        if err or not results?
+    mapDocInRules doc, id, (err, mapResults) ->
+        # mapResults : [ {docid, userid, shareid, userParams} ]
+        if err
             callback err
         else
-            async.series [
-                (_callback) ->
-                    # There is a doc result
-                    if results[0]
-                        plug.insertDoc results[0].docid, shareid, results[0].userDesc, (err) ->
-                            if err? then callback err else callback null, results[0].id
-                    else
-                        callback null
-                ,
-                (_callback) ->
-                    # There is an user result
-                    if results[1]
-                        plug.insertUser results[1].docid, shareid, results[1].userDesc, (err) ->
-                            if err? then callback err else callback null, results[1].id
-                    else
-                        callback null
-            ],
-            # insertedIds : [docid, userid], empty case if no insert
-            (err, insertedIds) ->
-                callback err, insertedIds
+            async.map mapResults, insertResults, (err) ->
+                console.log 'results : ' + JSON.stringify mapResults
+                callback err, mapResults
+
+# Insert the map result as a tuple in PlugDB, as a Doc and/or as a User
+# mapResult : {docid, userid, shareid, userParams}
+insertResults = (mapResult, callback) ->
+
+    async.series [
+        (_callback) ->
+            # There is a doc result
+            if mapResult.docid?
+                plug.insertDoc mapResult.docid, mapResult.shareid, mapResult.userDesc, (err) ->
+                    if err? then _callback err else _callback null
+            else
+                _callback null
+        ,
+        (_callback) ->
+            # There is an user result
+            if mapResult.user?
+                plug.insertUser mapResult.docid, mapResult.shareid, mapResult.userDesc, (err) ->
+                    if err? then _callback err else _callback null
+            else
+                _callback null
+    ],
+    (err) ->
+        callback err
 
 
 #Select doc into PlugDB
@@ -45,42 +53,58 @@ module.exports.selectUserPlug = (id, callback) ->
 
 
 mapDocInRules = (doc, id, callback) ->
-    rules.forEach (rule) ->
-        console.log 'rule : ' + JSON.stringify rule
-        async.parallel [
-            (_callback) ->
-                console.log 'doc : ' + JSON.stringify doc
-                #convertDoc = doc.toString().replace("/\/", "");
-                mapDoc doc, id, rule.filterDoc, (filteredDoc) ->
-                    if filteredDoc then console.log 'doc maped !! ' + JSON.stringify filteredDoc
-                    _callback null, filteredDoc
-            ,
-            (_callback) ->
-                #convertDoc = doc.toString().replace("/\/", "");
-                mapDoc doc, id, rule.filterUser, (filteredUser) ->
-                    if filteredUser then console.log 'user maped !! ' + JSON.stringify filteredUser
-                    _callback null, filteredUser
 
-        ],
-        # filteredRes : [filteredDoc, filteredUser], empty case if no mapping
-        # filteredDoc/User : {id, user_desc}
-        (err, filteredRes) ->
-            if filteredRes[0]? || filteredRes[1]?
-                console.log 'got a mapping !! ' + JSON.stringify filteredRes
-                console.log 'share id : ' + rule.id
-            callback err, filteredRes, rule.id
+    # Evaluate a rule for the doc
+    evalRule = (rule, _callback) ->
 
+        mapResult =
+            docid: null
+            userid: null
+            shareid: null
+            userParams: null
 
+        # Save the result of the mapping
+        saveResult = (id, shareid, userParams, isDoc) ->
+            if isDoc then mapResult.docid = id else mapResult.userid = id
+            mapResult.shareid = shareid
+            mapResult.userParams = userParams
+
+        filterDoc = rule.filterDoc
+        filterUser = rule.filterUser
+
+        # Evaluate the doc filter
+        mapDoc doc, id, rule.id, filterDoc, (docMaped) ->
+            if docMaped then console.log 'doc maped !! ' + JSON.stringify docMaped
+            saveResult id, rule.id, filterDoc.userParam, true if docMaped
+
+            # Evaluate the user filter
+            mapDoc doc, id, rule.id, filterUser, (userMaped) ->
+                if userMaped then console.log 'user maped !! ' + JSON.stringify userMaped
+                saveResult id, rule.id, filterUser.userParam, false if userMaped
+
+                if not mapResult.docid? && not mapResult.userid?
+                    _callback null, null
+                else
+                    _callback null, mapResult
+
+    # Evaluate each rules
+    # mapResults : [ {docid, userid, shareid, userParams} ]
+    async.map rules, evalRule, (err, mapResults) ->
+
+        # Convert to array and remove null results
+        results = Array.prototype.slice.call( mapResults, 0 )
+        results.splice(i, 1) for res,i in results when res is null
+        callback err, results
 
 
 #Generic map : evaluate the rule in the filter against the doc
-mapDoc = (doc, docid, filter, callback) ->
+mapDoc = (doc, docid, shareid, filter, callback) ->
     console.log 'eval ' + JSON.stringify filter.rule + ' for the doc ' + JSON.stringify doc
     if eval filter.rule
-        user_desc = if filter.userDesc then eval filter.userDesc
-        callback {docid, user_desc}
+        if filter.userDesc then ret = eval filer.userDesc else ret = true
+        callback ret
     else
-        callback null
+        callback false
 
 
 module.exports.createRule = (doc, callback) ->
