@@ -5,7 +5,9 @@ async = require 'async'
 # Contains all the sharing rules
 rules = []
 
-#Insert the doc into PlugDB
+# Map the inserted document against all the sharing rules
+# If one or several mapping are trigerred, the result {id, shareid, userParams}
+# will be inserted in PlugDB as a Doc and/or a User
 module.exports.mapDocOnInsert = (doc, id, callback) ->
     mapDocInRules doc, id, (err, mapResults) ->
         # mapResults : [ {docid, userid, shareid, userParams} ]
@@ -25,6 +27,7 @@ insertResults = (mapResult, callback) ->
             # There is a doc result
             if mapResult.docid?
                 plug.insertDoc mapResult.docid, mapResult.shareid, mapResult.userDesc, (err) ->
+                    if not err? then console.log mapResult.docid + " inserted in PlugDB"
                     if err? then _callback err else _callback null
             else
                 _callback null
@@ -33,6 +36,7 @@ insertResults = (mapResult, callback) ->
             # There is an user result
             if mapResult.user?
                 plug.insertUser mapResult.docid, mapResult.shareid, mapResult.userDesc, (err) ->
+                    if not err? then console.log mapResult.userid + " inserted in PlugDB"
                     if err? then _callback err else _callback null
             else
                 _callback null
@@ -52,6 +56,8 @@ module.exports.selectUserPlug = (id, callback) ->
         callback err, tuple
 
 
+# For each rule, evaluates if the document is correctly filtered/mapped
+# as a document and/or a user
 mapDocInRules = (doc, id, callback) ->
 
     # Evaluate a rule for the doc
@@ -74,12 +80,12 @@ mapDocInRules = (doc, id, callback) ->
 
         # Evaluate the doc filter
         mapDoc doc, id, rule.id, filterDoc, (docMaped) ->
-            if docMaped then console.log 'doc maped !! ' + JSON.stringify docMaped
+            if docMaped then console.log 'doc maped !! '
             saveResult id, rule.id, filterDoc.userParam, true if docMaped
 
             # Evaluate the user filter
             mapDoc doc, id, rule.id, filterUser, (userMaped) ->
-                if userMaped then console.log 'user maped !! ' + JSON.stringify userMaped
+                if userMaped then console.log 'user maped !! '
                 saveResult id, rule.id, filterUser.userParam, false if userMaped
 
                 if not mapResult.docid? && not mapResult.userid?
@@ -87,19 +93,20 @@ mapDocInRules = (doc, id, callback) ->
                 else
                     _callback null, mapResult
 
-    # Evaluate each rules
+    # Evaluate all the rules
     # mapResults : [ {docid, userid, shareid, userParams} ]
     async.map rules, evalRule, (err, mapResults) ->
-
         # Convert to array and remove null results
-        results = Array.prototype.slice.call( mapResults, 0 )
-        results.splice(i, 1) for res,i in results when res is null
-        callback err, results
+        mapResults = Array.prototype.slice.call( mapResults )
+        for i in [mapResults.length-1..0]
+            mapResults.splice(i, 1) if mapResults[i] is null
+
+        callback err, mapResults
 
 
-#Generic map : evaluate the rule in the filter against the doc
+# Generic map : evaluate the rule in the filter against the doc
 mapDoc = (doc, docid, shareid, filter, callback) ->
-    console.log 'eval ' + JSON.stringify filter.rule + ' for the doc ' + JSON.stringify doc
+    #console.log 'eval ' + JSON.stringify filter.rule + ' for the doc ' + JSON.stringify doc
     if eval filter.rule
         if filter.userDesc then ret = eval filer.userDesc else ret = true
         callback ret

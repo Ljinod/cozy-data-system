@@ -26,6 +26,9 @@ insertResults = function(mapResult, callback) {
     function(_callback) {
       if (mapResult.docid != null) {
         return plug.insertDoc(mapResult.docid, mapResult.shareid, mapResult.userDesc, function(err) {
+          if (err == null) {
+            console.log(mapResult.docid + " inserted in PlugDB");
+          }
           if (err != null) {
             return _callback(err);
           } else {
@@ -38,6 +41,9 @@ insertResults = function(mapResult, callback) {
     }, function(_callback) {
       if (mapResult.user != null) {
         return plug.insertUser(mapResult.docid, mapResult.shareid, mapResult.userDesc, function(err) {
+          if (err == null) {
+            console.log(mapResult.userid + " inserted in PlugDB");
+          }
           if (err != null) {
             return _callback(err);
           } else {
@@ -88,14 +94,14 @@ mapDocInRules = function(doc, id, callback) {
     filterUser = rule.filterUser;
     return mapDoc(doc, id, rule.id, filterDoc, function(docMaped) {
       if (docMaped) {
-        console.log('doc maped !! ' + JSON.stringify(docMaped));
+        console.log('doc maped !! ');
       }
       if (docMaped) {
         saveResult(id, rule.id, filterDoc.userParam, true);
       }
       return mapDoc(doc, id, rule.id, filterUser, function(userMaped) {
         if (userMaped) {
-          console.log('user maped !! ' + JSON.stringify(userMaped));
+          console.log('user maped !! ');
         }
         if (userMaped) {
           saveResult(id, rule.id, filterUser.userParam, false);
@@ -109,21 +115,19 @@ mapDocInRules = function(doc, id, callback) {
     });
   };
   return async.map(rules, evalRule, function(err, mapResults) {
-    var i, res, results, _i, _len;
-    results = Array.prototype.slice.call(mapResults, 0);
-    for (i = _i = 0, _len = results.length; _i < _len; i = ++_i) {
-      res = results[i];
-      if (res === null) {
-        results.splice(i, 1);
+    var i, _i, _ref;
+    mapResults = Array.prototype.slice.call(mapResults);
+    for (i = _i = _ref = mapResults.length - 1; _ref <= 0 ? _i <= 0 : _i >= 0; i = _ref <= 0 ? ++_i : --_i) {
+      if (mapResults[i] === null) {
+        mapResults.splice(i, 1);
       }
     }
-    return callback(err, results);
+    return callback(err, mapResults);
   });
 };
 
 mapDoc = function(doc, docid, shareid, filter, callback) {
   var ret;
-  console.log('eval ' + JSON.stringify(filter.rule + ' for the doc ' + JSON.stringify(doc)));
   if (eval(filter.rule)) {
     if (filter.userDesc) {
       ret = eval(filer.userDesc);
