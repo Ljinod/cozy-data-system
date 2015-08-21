@@ -145,3 +145,8 @@ exports.addSharingRules = (callback) ->
 exports.initPlugDB = (callback) ->
     plug.init (err) ->
         if err then callback err else callback()
+
+# TO BE REMOVED : insert the sharing rules in plugdb
+exports.insertSharesPlugDB = (callback) ->
+    sharing.insertRules (err) ->
+        if err then callback err else callback()

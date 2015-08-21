@@ -5,10 +5,7 @@ feed = require '../lib/feed'
 dbHelper = require '../lib/db_remove_helper'
 encryption = require '../lib/encryption'
 client = require '../lib/indexer'
-mapDoc = require('../lib/sharing').mapDocOnInsert
-selectDocPlug = require('../lib/sharing').selectDocPlug
-selectUserPlug = require('../lib/sharing').selectUserPlug
-
+sharing = require '../lib/sharing'
 
 ## Before and after methods
 
@@ -63,12 +60,12 @@ module.exports.exist = (req, res, next) ->
 # GET /data/:id/
 module.exports.find = (req, res) ->
     delete req.doc._rev # CouchDB specific, user don't need it
-    ###selectDocPlug req.doc.id, (err, tuple) ->
+    ###sharing.selectDocPlug req.doc.id, (err, tuple) ->
         if err?
             console.log 'Plugdb select failed : ' + err
         else if tuple
             console.log 'select doc plugdb : ' + JSON.stringify tuple
-        selectUserPlug req.doc.id, (err, tuple) ->
+        sharing.selectUserPlug req.doc.id, (err, tuple) ->
             if err?
                 console.log 'Plugdb select failed : ' + err
             else if tuple
@@ -94,25 +91,30 @@ module.exports.create = (req, res, next) ->
                         err.status = 409
                         next err
                     else
-                        #map the doc against the sharing rules
-                        mapDoc req.body, doc.id, (err, ids) ->
-                            if err 
+                        # map the doc against the sharing rules
+                        sharing.mapDocOnInsert req.body, doc.id, (err, mapIds) ->
+                            if err
                                 console.log 'Error on the mapping : ' + err
-                            else if ids?
-                                console.log 'new doc inserted : ' + ids[0] if ids[0]?
-                                console.log 'new user inserted : ' + ids[1] if ids[1]?
+                            else if mapIds? && mapIds.length > 0
+                                console.log "doc inserted, let's match now"
+                                sharing.matchAfterInsert mapIds, (err, matchIds) ->
+                                    if err
+                                        console.log 'Error on the matching : ' + err
+
                         res.send 201, _id: doc.id
     else
         db.save req.body, (err, doc) ->
             if err
                 next err
             else
-                mapDoc req.body, doc.id, (err, ids) ->
-                    if err 
+                sharing.mapDocOnInsert req.body, doc.id, (err, mapIds) ->
+                    if err
                         console.log 'Error on the mapping : ' + err
-                    else if ids?
-                        console.log 'new doc inserted : ' + ids[0] if ids[0]?
-                        console.log 'new user inserted : ' + ids[1] if ids[1]?
+                    else if mapIds? && mapIds.length > 0
+                        console.log "doc inserted, let's match now"
+                        sharing.matchAfterInsert mapIds, (err, matchIds) ->
+                            if err
+                                console.log 'Error on the matching : ' + err
                 res.send 201, _id: doc.id
 
 # PUT /data/:id/
@@ -153,7 +155,7 @@ module.exports.delete = (req, res, next) ->
     dbHelper.remove req.doc, (err, res) ->
         if err
             next err
-        else 
+        else
             # Doc is removed from indexation
             client.del "index/#{id}/", (err, response, resbody) ->
                 send_success()

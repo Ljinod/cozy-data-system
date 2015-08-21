@@ -213,3 +213,13 @@ exports.initPlugDB = function(callback) {
     }
   });
 };
+
+exports.insertSharesPlugDB = function(callback) {
+  return sharing.insertRules(function(err) {
+    if (err) {
+      return callback(err);
+    } else {
+      return callback();
+    }
+  });
+};

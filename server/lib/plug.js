@@ -1,4 +1,4 @@
-var authFP, close, init, insertDoc, insertDocs, insertUser, java, jdbcJar, plug, selectDocs, selectSingleDoc, selectSingleUser, selectUsers;
+var authFP, close, init, insertDoc, insertDocs, insertShare, insertUser, java, jdbcJar, match, matchAll, plug, selectDocs, selectSingleDoc, selectSingleUser, selectUsers;
 
 java = require('java');
 
@@ -34,14 +34,20 @@ insertDocs = function(ids, callback) {
 };
 
 insertDoc = function(docid, shareid, userParams, callback) {
-  plug.plugInsertDoc(docid, shareid, userParams, function(err) {
-    callback(err);
+  return plug.plugInsertDoc(docid, shareid, userParams, function(err) {
+    return callback(err);
   });
 };
 
 insertUser = function(userid, shareid, userParams, callback) {
-  plug.plugInsertDoc(docid, shareid, userParams, function(err) {
-    callback(err);
+  return plug.plugInsertUser(userid, shareid, userParams, function(err) {
+    return callback(err);
+  });
+};
+
+insertShare = function(shareid, description, callback) {
+  return plug.plugInsertShare(shareid, description, function(err) {
+    return callback(err);
   });
 };
 
@@ -69,6 +75,18 @@ selectSingleUser = function(userid, callback) {
   });
 };
 
+matchAll = function(matchingType, id, shareid, callback) {
+  return plug.plugMatchAll(matchingType, id, shareid, function(err, result) {
+    return callback(err, result);
+  });
+};
+
+match = function(matchingType, id, shareid, callback) {
+  return plug.plugMatch(matchingType, id, shareid, function(err, result) {
+    return callback(err, result);
+  });
+};
+
 close = function(callback) {
   plug.plugClose(function(err) {
     callback(err);
@@ -81,6 +99,10 @@ authFP = function(callback) {
   });
 };
 
+exports.MATCH_USERS = 0;
+
+exports.MATCH_DOCS = 1;
+
 exports.init = init;
 
 exports.insertDocs = insertDocs;
@@ -89,6 +111,8 @@ exports.insertDoc = insertDoc;
 
 exports.insertUser = insertUser;
 
+exports.insertShare = insertShare;
+
 exports.selectDocs = selectDocs;
 
 exports.selectUsers = selectUsers;
@@ -96,6 +120,10 @@ exports.selectUsers = selectUsers;
 exports.selectSingleDoc = selectSingleDoc;
 
 exports.selectSingleUser = selectSingleUser;
+
+exports.matchAll = matchAll;
+
+exports.match = match;
 
 exports.close = close;
 

@@ -28,17 +28,17 @@ insertDocs = (ids, callback) ->
 
  #insert docids and associated rules
 insertDoc = (docid, shareid, userParams, callback) ->
-  plug.plugInsertDoc docid, shareid, userParams, (err) ->
-    callback err
-    return
-  return
-
+    plug.plugInsertDoc docid, shareid, userParams, (err) ->
+        callback err
  #insert docids and associated rules
 insertUser = (userid, shareid, userParams, callback) ->
-  plug.plugInsertDoc docid, shareid, userParams, (err) ->
-    callback err
-    return
-  return
+    plug.plugInsertUser userid, shareid, userParams, (err) ->
+        callback err
+
+#insert sharing rule
+insertShare = (shareid, description, callback) ->
+    plug.plugInsertShare shareid, description, (err) ->
+        callback err
 
 #select docs to return the ids
 selectDocs = (callback) ->
@@ -68,7 +68,18 @@ selectSingleUser = (userid, callback) ->
     return
   return
 
+# Match the doc/user to create new ACLs
+# Returns an acl[][] array, containing all the [userids, docids] for
+# the shareid
+matchAll = (matchingType, id, shareid, callback) ->
+    plug.plugMatchAll matchingType, id, shareid, (err, result) ->
+        callback err, result
 
+# Match the doc/user to create new ACLs
+# Returns an acl[][] array, containing the inserted [userids, docids]
+match = (matchingType, id, shareid, callback) ->
+    plug.plugMatch matchingType, id, shareid, (err, result) ->
+        callback err, result
 
 #close the connection and save the data on flash
 close = (callback) ->
@@ -84,13 +95,19 @@ authFP = (callback) ->
     return
   return
 
+exports.MATCH_USERS = 0
+exports.MATCH_DOCS = 1
+
 exports.init = init
 exports.insertDocs = insertDocs
 exports.insertDoc = insertDoc
 exports.insertUser = insertUser
+exports.insertShare = insertShare
 exports.selectDocs = selectDocs
 exports.selectUsers = selectUsers
 exports.selectSingleDoc = selectSingleDoc
 exports.selectSingleUser = selectSingleUser
+exports.matchAll = matchAll
+exports.match = match
 exports.close = close
 exports.authFP = authFP

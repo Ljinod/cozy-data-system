@@ -15,10 +15,13 @@ module.exports = (app, server, callback) ->
                 # Patch: 24/03/15
                 init.addAccesses (err) ->
                     log.error err if err?
-                    #sharing rules
-                    init.addSharingRules (err) ->
+                    #plugdb
+                    init.initPlugDB (err) ->
                         log.error err if err?
-                        #plugdb
-                        init.initPlugDB (err) ->
+                        #sharing rules
+                        init.addSharingRules (err) ->
                             log.error err if err?
+                            init.insertSharesPlugDB (err) ->
+                                log.error err if err?
+
             callback app, server if callback?
