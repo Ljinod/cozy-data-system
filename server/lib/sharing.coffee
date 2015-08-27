@@ -30,7 +30,8 @@ insertResults = (mapResult, callback) ->
             # There is a doc result
             if mapResult.docid?
                 plug.insertDoc mapResult.docid, mapResult.shareid, mapResult.userDesc, (err) ->
-                    if not err? then console.log "doc " + mapResult.docid + " inserted in PlugDB"
+                    unless err? then console.log "doc " + mapResult.docid +
+                                            " inserted in PlugDB"
                     if err? then _callback err else _callback null
             else
                 _callback null
@@ -39,7 +40,8 @@ insertResults = (mapResult, callback) ->
             # There is an user result
             if mapResult.userid?
                 plug.insertUser mapResult.userid, mapResult.shareid, mapResult.userDesc, (err) ->
-                    if not err? then console.log "user " + mapResult.userid + " inserted in PlugDB"
+                    unless err? then console.log "user " + mapResult.userid +
+                                            " inserted in PlugDB"
                     if err? then _callback err else _callback null
             else
                 _callback null
@@ -49,8 +51,8 @@ insertResults = (mapResult, callback) ->
 
 #Select doc into PlugDB
 module.exports.selectDocPlug = (id, callback) ->
-	plug.selectSingleDoc id, (err, tuple) ->
-		callback err, tuple
+    plug.selectSingleDoc id, (err, tuple) ->
+        callback err, tuple
 
 #Select user into PlugDB
 module.exports.selectUserPlug = (id, callback) ->
@@ -105,7 +107,6 @@ mapDocInRules = (doc, id, callback) ->
 
 # Generic map : evaluate the rule in the filter against the doc
 mapDoc = (doc, docid, shareid, filter, callback) ->
-    #console.log 'eval ' + JSON.stringify filter.rule + ' for the doc ' + JSON.stringify doc
     if eval filter.rule
         if filter.userDesc then ret = eval filer.userDesc else ret = true
         callback ret
@@ -128,7 +129,6 @@ module.exports.matchAfterInsert = (mapResults, callback) ->
             if acl?
                 acl = Array.prototype.slice.call( acl )
                 acl.unshift mapResult.shareid
-            #(acl.push mapResult.shareid for acl in acls when acl is not null) if acls?
             #console.log 'res match : ' + JSON.stringify acl if acl?
 
             _callback err, acl
@@ -151,7 +151,7 @@ module.exports.matchAfterInsert = (mapResults, callback) ->
 
 startShares = (acls, callback) ->
 
-    buildShare = (acl, _callback) ->
+    buildShareData = (acl, _callback) ->
         share =
             shareID: null
             users: []
@@ -166,46 +166,62 @@ startShares = (acls, callback) ->
                 docID = id[1]
                 share.users.push {userID} unless userInArray share.users, userID
                 share.docIDs.push docID unless share.users.length > 1
+
         _callback null, share
 
-    async.map acls, buildShare, (err, shares) ->
+    sharingProcess = (share, _callback) ->
+        for user in share.users
+            # Get remote address based on userid
+            getCozyAddressFromUserID user.userID, (err, url) ->
+                # TODO : handle errors and empty url
+                user.target = url
+
+                # Start the full sharing process for one user
+                userSharing share.shareID, user, share.docIDs, (err) ->
+                    callback err
+
+    async.map acls, buildShareData, (err, shares) ->
         console.log 'shares : ' + JSON.stringify shares
-        for share in shares
-            for user in share.users
-                # Get remote address based on userid
-                getCozyAddressFromUserID user.userID, (err, url) ->
-                    # TODO : handle errors and empty url
-                    user.target = url
-                    shareDocs
-                    # Replicate ids to targets url
-                    replicateDocs user.target, share.docIDs, (err, replicationID) ->
-                        if err?
-                            callback err
-                        else
-                            # bind shareid to acl?
-                            saveReplication share.shareID, replicationID, (err, res) ->
-                                callback err, res
+        async.each shares, sharingProcess, (err) ->
+            callback err
 
 
-shareDocs = (shareID, user, ids, callback) ->
-    rule = getRuleById share.shareID
-    if rule? and rule.activeReplications?
-        # Replication exists for this user, cancel it
+
+# Cancel existing replication, create a new one, and save it
+userSharing = (shareID, user, ids, callback) ->
+    console.log 'user id : ' + user.userID
+
+    rule = getRuleById shareID
+    if rule?
+        # Get the replicationID in rules based on the userID
+        # Note : need to think more in case several users
         replicationID = getRepID rule.activeReplications, user.userID
+        console.log 'get rep id : ' + replicationID
+        # Replication exists for this user, cancel it
         if replicationID?
+            # TODO : remove the repID from the sharing doc
+            # in case the repIDs are differents
             cancelReplication replicationID, (err) ->
                 if err?
                     callback err
                 else
-                    replicateDocs user.target, ids, (err, repID) ->
-                        saveReplication shareID, repID, (err, res)
-                            callback err, res
+                    shareDocs user, ids, rule, (err) ->
+                        callback err
+        # No active replication
         else
-            replicateDocs user.target, ids, (err, repID) ->
-                saveReplication shareID, repID, (err, res)
-                    callback err, res
+            shareDocs user, ids, rule, (err) ->
+                callback err
+    else
+        callback null
 
-
+# Replication documents and save the replication
+shareDocs = (user, ids, rule, callback) ->
+    replicateDocs user.target, ids, (err, repID) ->
+        if err?
+            callback err
+        else
+            saveReplication rule, user.userID, repID, (err) ->
+                callback err
 
 
 # Share the ids to the specifiedtarget
@@ -215,7 +231,9 @@ replicateDocs = (target, ids, callback) ->
 
     couchClient = request.newClient "http://localhost:5984"
     sourceURL = "http://192.168.50.4:5984/cozy"
-    targetURL = "http://pzjWbznBQPtfJ0es6cvHQKX0cGVqNfHW:NPjnFATLxdvzLxsFh9wzyqSYx4CjG30U@192.168.50.5:5984/cozy"
+    targetURL = "http://pzjWbznBQPtfJ0es6cvHQKX0cGVqNfHW:" +
+                "NPjnFATLxdvzLxsFh9wzyqSYx4CjG30U" +
+                "@192.168.50.5:5984/cozy"
     couchTarget = request.newClient targetURL
 
     repSourceToTarget =
@@ -242,7 +260,7 @@ replicateDocs = (target, ids, callback) ->
             console.log 'Replication from source suceeded \o/'
             console.log JSON.stringify body
             replicationID = body._local_id
-            couchTarget.post "_replicate", repTargetToSource, (err, res, body) ->
+            couchTarget.post "_replicate", repTargetToSource, (err, res, body)->
                 if err
                     callback err
                 else if not body.ok
@@ -254,40 +272,69 @@ replicateDocs = (target, ids, callback) ->
                     callback err, replicationID
 
 # Write the replication id in the sharing doc and save in RAM
-saveReplication = (shareID, replicationID, callback) ->
+saveReplication = (rule, userID, replicationID, callback) ->
 
-    if shareID? and replicationID?
-        # Get the rule by its id
-        rule = getRuleById shareID
-        console.log 'rule id found : ' + rule.id + ' for shareid ' + shareID
-
-        #console.log 'rule found : ' + JSON.stringify rule
-        if rule?
-            if rule.activeReplications?
-                rule.activeReplications.push replicationID
-                # Save the new replication id in the share document
-                db.merge rule.id, {activeReplications: rule.activeReplications}, (err, res) ->
-                    console.log 'res merge : ' + JSON.stringify res
-                    callback err, res
-            else
-                rule.activeReplications = [replicationID]
-                db.get shareID, (err, doc) ->
-                    doc.activeReplications = rule.activeReplications
-                    db.save shareID, doc, (err, res) ->
-                        console.log 'res save : ' + JSON.stringify res
-                        callback err, res
-
+    if rule? and replicationID?
+        if rule.activeReplications?
+            rule.activeReplications.push {userID, replicationID}
+            # Save the new replication id in the share document
+            updateActiveRep rule.id, rule.activeReplications, true, (err) ->
+                callback err
         else
-            console.log 'no rule found with share id ' + shareID
+            rule.activeReplications = [{userID, replicationID}]
+            updateActiveRep rule.id, rule.activeReplications, false, (err) ->
+                callback err
     else
-        console.log 'no shareid given'
+        callback null
 
-    callback null
+updateActiveRep = (shareID, activeReplications, merge _callback) ->
+    # There are already replications in DB
+    if merge
+        db.merge shareID, {activeReplications: activeReplications}, (err, res) ->
+            console.log 'merge res : ' + JSON.stringify res if res
+            callback err
+
+    # There is normally no replication yet
+    else
+        db.get shareID, (err, doc) ->
+            if err
+                callback err
+            else
+                doc.activeReplications = activeReplications
+                db.save shareID, doc, (err, res) ->
+                    console.log 'res save : ' + JSON.stringify res if res
+                    callback err
+
+# Remove the replication from RAM and DB
+removeReplication = (rule, replicationID, callback) ->
+    # Cancel the replication for couchDB
+    cancelReplication replicationID, (err) ->
+        if err?
+            callback err
+        else
+            # There are active replications
+            if rule.activeReplications?
+                for rep, i in rule.activeReplication
+                    if rep.replicationID == replicationID
+                        rule.activeReplications.slice i, 1
+                        updateActiveRep rule.id, rule.activeReplications, (err) ->
+                            callback err
+            # There is normally no replication written in DB, but check it anyway
+            # to avoid ghost data
+            else
+                updateActiveRep rule.id, [], (err) ->
+                    callback err
+
 
 # Interrupt the running replication
 cancelReplication = (replicationID, callback) ->
     couchClient = request.newClient "http://localhost:5984"
-    couchClient.post "_replicate", {replication_id: replicationID, cancel:true}, (err, res, body) ->
+    args =
+        replication_id: replicationID
+        cancel: true
+    console.log 'args ' + JSON.stringify args
+
+    couchClient.post "_replicate", args, (err, res, body) ->
         if err
             callback err
         else if not body.ok
@@ -321,7 +368,8 @@ getActiveTasks = (client, callback) ->
         if err or not body.length?
             callback err
         else
-            repIds = (task.replication_id for task in body when task.replication_id)
+            for task in body
+                repIds = task.replication_id if task.replication_id
             callback null, repIds
 
 
@@ -362,11 +410,14 @@ module.exports.initRules = (callback) ->
 
 # Utils - should be moved
 userInArray = (array, userID) ->
-    return yes for ar in array when ar.userID == userID
+    if array?
+        return yes for ar in array when ar.userID == userID
     return no
 
 getRepID= (array, userID) ->
-    return repID for activeRep in array when activeRep.userID == userID
+    if array?
+        for activeRep in array
+            return activeRep.replicationID if activeRep.userID == userID
 
 getRuleById = (shareID, callback) ->
     for rule in rules
