@@ -101,12 +101,12 @@ module.exports.create = function(req, res, next) {
           } else {
             sharing.mapDocOnInsert(req.body, doc.id, function(err, mapIds) {
               if (err) {
-                return console.log('Error on the mapping : ' + err);
+                return console.log('Error on the mapping : ' + JSON.stringify(err));
               } else if ((mapIds != null) && mapIds.length > 0) {
                 console.log("doc inserted, let's match now");
                 return sharing.matchAfterInsert(mapIds, function(err, matchIds) {
                   if (err) {
-                    return console.log('Error on the matching : ' + err);
+                    return console.log('Error on the matching : ' + +JSON.stringify(err));
                   }
                 });
               }
@@ -125,12 +125,12 @@ module.exports.create = function(req, res, next) {
       } else {
         sharing.mapDocOnInsert(req.body, doc.id, function(err, mapIds) {
           if (err) {
-            return console.log('Error on the mapping : ' + err);
+            return console.log('Error on the mapping : ' + +JSON.stringify(err));
           } else if ((mapIds != null) && mapIds.length > 0) {
             console.log("doc inserted, let's match now");
             return sharing.matchAfterInsert(mapIds, function(err, matchIds) {
               if (err) {
-                return console.log('Error on the matching : ' + err);
+                return console.log('Error on the matching : ' + +JSON.stringify(err));
               }
             });
           }

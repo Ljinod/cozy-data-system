@@ -1,6 +1,7 @@
 plug = require './plug'
 db = require('../helpers/db_connect_helper').db_connect()
 async = require 'async'
+request = require 'request-json'
 
 # Contains all the sharing rules
 # Avoid to request CouchDB for each document
@@ -46,7 +47,6 @@ insertResults = (mapResult, callback) ->
     (err) ->
         callback err
 
-
 #Select doc into PlugDB
 module.exports.selectDocPlug = (id, callback) ->
 	plug.selectSingleDoc id, (err, tuple) ->
@@ -56,7 +56,6 @@ module.exports.selectDocPlug = (id, callback) ->
 module.exports.selectUserPlug = (id, callback) ->
     plug.selectSingleUser id, (err, tuple) ->
         callback err, tuple
-
 
 # For each rule, evaluates if the document is correctly filtered/mapped
 # as a document and/or a user
@@ -100,9 +99,7 @@ mapDocInRules = (doc, id, callback) ->
     async.map rules, evalRule, (err, mapResults) ->
         # Convert to array and remove null results
         mapResults = Array.prototype.slice.call( mapResults )
-        for i in [mapResults.length-1..0]
-            mapResults.splice(i, 1) if mapResults[i] is null
-
+        removeNullValues mapResults
         callback err, mapResults
 
 
@@ -117,42 +114,109 @@ mapDoc = (doc, docid, shareid, filter, callback) ->
 
 # Call the matching operator in PlugDB and share the results if any
 module.exports.matchAfterInsert = (mapResults, callback) ->
+
+    # Send the match command to PlugDB
+    matching = (mapResult, _callback) ->
+        if mapResult.docid?
+            matchType = plug.MATCH_USERS
+            id = mapResult.docid
+        else
+            matchType = plug.MATCH_DOCS
+            id = mapResult.userid
+
+        plug.matchAll matchType, id, mapResult.shareid, (err, acl) ->
+            if acl?
+                acl = Array.prototype.slice.call( acl )
+                acl.unshift mapResult.shareid
+            #(acl.push mapResult.shareid for acl in acls when acl is not null) if acls?
+            #console.log 'res match : ' + JSON.stringify acl if acl?
+
+            _callback err, acl
+
+    # Match all results
     if mapResults?
         async.mapSeries mapResults, matching, (err, acls) ->
-            console.log 'acls : ' + JSON.stringify acls if acls
+            if err
+                callback err
+            else
+                removeNullValues acls
 
-            callback err, acls
+                if acls? && acls.length > 0
+                    startShares acls, (err) ->
+                        callback err
+                else
+                    callback null
     else
         callback null
 
-matching = (mapResult, callback) ->
-    async.series [
-        (_callback) ->
-            if mapResult.docid?
-                plug.matchAll plug.MATCH_USERS, mapResult.docid, mapResult.shareid, (err, acls) ->
-                    console.log 'res match : ' + JSON.stringify acls if acls?
-                    _callback err, acls
+startShares = (acls, callback) ->
+
+    buildShare = (acl, _callback) ->
+        share =
+            shareID: null
+            users: []
+            docIDs: []
+
+        # Each acl concerns one sharing rule
+        for id,i in acl
+            if i == 0
+                share.shareID = id
             else
-                _callback null
-        ,
-        (_callback) ->
-            if mapResult.userid?
-                plug.matchAll plug.MATCH_DOCS, mapResult.userid, mapResult.shareid, (err, acls) ->
-                    #share if result
-                    console.log 'res match : ' + JSON.stringify acls if acls?
-                    _callback err, acls
-            else
-                _callback null
-    ],
-    (err, matchResults) ->
-        console.log 'match results : ' + JSON.stringify matchResults if matchResults?
-        callback err, matchResults
+                userID = id[0]
+                docID = id[1]
+                share.users.push {userID} unless userInArray share.users, userID
+                share.docIDs.push docID unless share.users.length > 1
+        _callback null, share
+
+    async.map acls, buildShare, (err, shares) ->
+        console.log 'shares : ' + JSON.stringify shares
+        for share in shares
+            for user in share.users
+                # Get remote address based on userid
+                getCozyAddressFromUserID user.userID, (err, url) ->
+                    # TODO : handle errors and empty url
+                    user.target = url
+                    shareDocs
+                    # Replicate ids to targets url
+                    replicateDocs user.target, share.docIDs, (err, replicationID) ->
+                        if err?
+                            callback err
+                        else
+                            # bind shareid to acl?
+                            saveReplication share.shareID, replicationID, (err, res) ->
+                                callback err, res
+
+
+shareDocs = (shareID, user, ids, callback) ->
+    rule = getRuleById share.shareID
+    if rule? and rule.activeReplications?
+        # Replication exists for this user, cancel it
+        replicationID = getRepID rule.activeReplications, user.userID
+        if replicationID?
+            cancelReplication replicationID, (err) ->
+                if err?
+                    callback err
+                else
+                    replicateDocs user.target, ids, (err, repID) ->
+                        saveReplication shareID, repID, (err, res)
+                            callback err, res
+        else
+            replicateDocs user.target, ids, (err, repID) ->
+                saveReplication shareID, repID, (err, res)
+                    callback err, res
+
+
+
 
 # Share the ids to the specifiedtarget
-shareDocs = (target, ids) ->
+replicateDocs = (target, ids, callback) ->
+
+    console.log 'lets replicate ' + ids + ' on target ' + target
+
     couchClient = request.newClient "http://localhost:5984"
-    sourceURL = "http://localhost:5984/cozy"
+    sourceURL = "http://192.168.50.4:5984/cozy"
     targetURL = "http://pzjWbznBQPtfJ0es6cvHQKX0cGVqNfHW:NPjnFATLxdvzLxsFh9wzyqSYx4CjG30U@192.168.50.5:5984/cozy"
+    couchTarget = request.newClient targetURL
 
     repSourceToTarget =
         source: "cozy"
@@ -163,68 +227,93 @@ shareDocs = (target, ids) ->
     # For bilateral sync; should be initiated by the target
     repTargetToSource =
         source: "cozy"
-        target: source
+        target: sourceURL
         continuous: true
         doc_ids: ids
 
     couchClient.post "_replicate", repSourceToTarget, (err, res, body) ->
         #err is sometimes empty, even if it has failed
-        if err or not body.ok
-            console.log JSON.stringify body
-            console.log "Replication from source failed"
+        if err
             callback err
-
+        else if not body.ok
+            console.log JSON.stringify body
+            callback body
         else
             console.log 'Replication from source suceeded \o/'
             console.log JSON.stringify body
             replicationID = body._local_id
             couchTarget.post "_replicate", repTargetToSource, (err, res, body) ->
-                if err or not body.ok
-                    console.log JSON.stringify body
-                    console.log "Replication from target failed"
+                if err
                     callback err
-
+                else if not body.ok
+                    console.log JSON.stringify body
+                    callback body
                 else
                     console.log 'Replication from target suceeded \o/'
                     console.log JSON.stringify body
                     callback err, replicationID
 
 # Write the replication id in the sharing doc and save in RAM
-saveReplication = (rule, replicationID, callback) ->
-    if rule? and replicationID?
-        # See cradle : https://github.com/flatiron/cradle
-        if rule.activeReplications
-            rule.activeReplications.push replicationID
-        else
-            rule.activeReplications = [replicationID]
+saveReplication = (shareID, replicationID, callback) ->
 
-        console.log 'active replications : ' + JSON.stringify rule.activeReplications
-        # Save the new replication id in the share document
-        db.save ruleID, {activeReplications: rule.activeReplications}, (err, res) ->
-            console.log JSON.stringify res
-            callback err, res
+    if shareID? and replicationID?
+        # Get the rule by its id
+        rule = getRuleById shareID
+        console.log 'rule id found : ' + rule.id + ' for shareid ' + shareID
+
+        #console.log 'rule found : ' + JSON.stringify rule
+        if rule?
+            if rule.activeReplications?
+                rule.activeReplications.push replicationID
+                # Save the new replication id in the share document
+                db.merge rule.id, {activeReplications: rule.activeReplications}, (err, res) ->
+                    console.log 'res merge : ' + JSON.stringify res
+                    callback err, res
+            else
+                rule.activeReplications = [replicationID]
+                db.get shareID, (err, doc) ->
+                    doc.activeReplications = rule.activeReplications
+                    db.save shareID, doc, (err, res) ->
+                        console.log 'res save : ' + JSON.stringify res
+                        callback err, res
+
+        else
+            console.log 'no rule found with share id ' + shareID
+    else
+        console.log 'no shareid given'
 
     callback null
 
-
+# Interrupt the running replication
+cancelReplication = (replicationID, callback) ->
+    couchClient = request.newClient "http://localhost:5984"
+    couchClient.post "_replicate", {replication_id: replicationID, cancel:true}, (err, res, body) ->
+        if err
+            callback err
+        else if not body.ok
+            console.log JSON.stringify body
+            callback body
+        else
+            console.log 'Cancel replication ok'
+            callback()
 
 # Get the url of a contact to share data  with him.
 # If there is no url defined, nothing will be share, but
 # eventually a modal should appear to ask the owner to manually
 # enter the url
 getCozyAddressFromUserID = (userID, callback) ->
+    if userID?
+        db.get userID, (err, user) ->
+            console.log 'user url : ' + user.url if user?
+            if err?
+                callback err
+            else
+                callback null, user.url
+    else
+        callback null
 
 
 
-# Interrupt the running replication
-cancelReplication = (client, replicationID, callback) ->
-    client.post "_replicate", {replication_id: replicationID, cancel:true}, (err, res, body) ->
-        if err or not body.ok
-            console.log "Cancel replication failed"
-            callback err
-        else
-            console.log 'Cancel replication ok'
-            callback()
 
 # Get the current replications ids
 getActiveTasks = (client, callback) ->
@@ -258,10 +347,9 @@ module.exports.insertRules = (callback) ->
         plug.insertShare rule.id, '', (err) ->
             _callback err
     async.eachSeries rules, insertShare, (err) ->
-        console.log 'sharing rules inserted in plug db' if not err
         callback err
 
-# Called on the DS initialization
+# Called at the DS initialization
 # Note : for the moment a new rule implies a ds reboot to be evaluated
 module.exports.initRules = (callback) ->
     db.view 'sharingRules/all', (err, rules) ->
@@ -270,3 +358,28 @@ module.exports.initRules = (callback) ->
             saveRule rule
 
         callback()
+
+
+# Utils - should be moved
+userInArray = (array, userID) ->
+    return yes for ar in array when ar.userID == userID
+    return no
+
+getRepID= (array, userID) ->
+    return repID for activeRep in array when activeRep.userID == userID
+
+getRuleById = (shareID, callback) ->
+    for rule in rules
+        return rule if rule.id == shareID
+
+
+removeNullValues = (array) ->
+    for i in [array.length-1..0]
+        array.splice(i, 1) if array[i] is null
+
+removeDuplicates = (array) ->
+    if array.length == 0
+        return []
+    res = {}
+    res[array[key]] = array[key] for key in [0..array.length-1]
+    value for key, value of res

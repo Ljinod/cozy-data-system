@@ -3,6 +3,11 @@ jdbcJar = './plug/plug_api.jar'
 java.classpath.push jdbcJar
 plug = java.newInstanceSync 'org.cozy.plug.Plug'
 
+IS_INIT = false
+
+isInit = ->
+    return IS_INIT
+
 #initialize PlugDB
 init = (callback) ->
     # Setup the timeout handler
@@ -14,8 +19,11 @@ init = (callback) ->
     plug.plugInit '/dev/ttyACM0', (err) ->
         if timeoutProtect
             clearTimeout timeoutProtect
-            console.log 'PlugDB ready'
+            if not err?
+                console.log 'PlugDB is ready'
+                IS_INIT = true
             callback err
+
 
 #insert docids and associated rules
 insertDocs = (ids, callback) ->
@@ -83,10 +91,13 @@ match = (matchingType, id, shareid, callback) ->
 
 #close the connection and save the data on flash
 close = (callback) ->
-  plug.plugClose (err) ->
-    callback err
-    return
-  return
+    console.log 'go close'
+    plug.plugClose (err) ->
+        if err
+            callback err
+        else
+            IS_INIT = false
+            callback null
 
 #Authenticate by fingerprint
 authFP = (callback) ->
@@ -97,6 +108,8 @@ authFP = (callback) ->
 
 exports.MATCH_USERS = 0
 exports.MATCH_DOCS = 1
+
+exports.isInit = isInit
 
 exports.init = init
 exports.insertDocs = insertDocs
