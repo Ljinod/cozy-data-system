@@ -120,6 +120,8 @@ module.exports.create = (req, res, next) ->
 # PUT /data/:id/
 # this doesn't take care of conflict (erase DB with the sent value)
 module.exports.update = (req, res, next) ->
+    console.log 'this is a update'
+
     delete req.body._attachments # attachments management has a dedicated API
 
     db.save req.params.id, req.body, (err, response) ->
@@ -131,6 +133,8 @@ module.exports.update = (req, res, next) ->
 # PUT /data/upsert/:id/
 # this doesn't take care of conflict (erase DB with the sent value)
 module.exports.upsert = (req, res, next) ->
+    console.log 'this is a upsert'
+
     delete req.body._attachments # attachments management has a dedicated API
 
     db.get req.params.id, (err, doc) ->
@@ -163,6 +167,7 @@ module.exports.delete = (req, res, next) ->
 # PUT /data/merge/:id/
 # this doesn't take care of conflict (erase DB with the sent value)
 module.exports.merge = (req, res, next) ->
+    console.log 'this is a merge'
     delete req.body._attachments # attachments management has a dedicated API
     db.merge req.params.id, req.body, (err, doc) ->
         if err
