@@ -287,7 +287,7 @@ saveReplication = (rule, userID, replicationID, callback) ->
     else
         callback null
 
-updateActiveRep = (shareID, activeReplications, merge _callback) ->
+updateActiveRep = (shareID, activeReplications, merge, _callback) ->
     # There are already replications in DB
     if merge
         db.merge shareID, {activeReplications: activeReplications}, (err, res) ->
