@@ -213,7 +213,7 @@ startShares = function(acls, callback) {
       _results.push(getCozyAddressFromUserID(user.userID, function(err, url) {
         user.target = url;
         return userSharing(share.shareID, user, share.docIDs, function(err) {
-          return callback(err);
+          return _callback(err);
         });
       }));
     }
@@ -229,13 +229,12 @@ startShares = function(acls, callback) {
 
 userSharing = function(shareID, user, ids, callback) {
   var replicationID, rule;
-  console.log('user id : ' + user.userID);
+  console.log('share with user : ' + JSON.stringify(user));
   rule = getRuleById(shareID);
   if (rule != null) {
     replicationID = getRepID(rule.activeReplications, user.userID);
-    console.log('get rep id : ' + replicationID);
     if (replicationID != null) {
-      return cancelReplication(replicationID, function(err) {
+      return removeReplication(rule, replicationID, function(err) {
         if (err != null) {
           return callback(err);
         } else {
@@ -271,7 +270,7 @@ replicateDocs = function(target, ids, callback) {
   console.log('lets replicate ' + ids + ' on target ' + target);
   couchClient = request.newClient("http://localhost:5984");
   sourceURL = "http://192.168.50.4:5984/cozy";
-  targetURL = "http://pzjWbznBQPtfJ0es6cvHQKX0cGVqNfHW:" + "NPjnFATLxdvzLxsFh9wzyqSYx4CjG30U" + "@192.168.50.5:5984/cozy";
+  targetURL = "http://pzjWbznBQPtfJ0es6cvHQKX0cGVqNfHW:NPjnFATLxdvzLxsFh9wzyqSYx4CjG30U@192.168.50.5:5984/cozy";
   couchTarget = request.newClient(targetURL);
   repSourceToTarget = {
     source: "cozy",
@@ -312,6 +311,19 @@ replicateDocs = function(target, ids, callback) {
   });
 };
 
+updateActiveRep = function(shareID, activeReplications, callback) {
+  return db.get(shareID, function(err, doc) {
+    if (err) {
+      return callback(err);
+    } else {
+      doc.activeReplications = activeReplications;
+      return db.save(shareID, doc, function(err, res) {
+        return callback(err);
+      });
+    }
+  });
+};
+
 saveReplication = function(rule, userID, replicationID, callback) {
   if ((rule != null) && (replicationID != null)) {
     if (rule.activeReplications != null) {
@@ -319,7 +331,7 @@ saveReplication = function(rule, userID, replicationID, callback) {
         userID: userID,
         replicationID: replicationID
       });
-      return updateActiveRep(rule.id, rule.activeReplications, true, function(err) {
+      return updateActiveRep(rule.id, rule.activeReplications, function(err) {
         return callback(err);
       });
     } else {
@@ -329,7 +341,7 @@ saveReplication = function(rule, userID, replicationID, callback) {
           replicationID: replicationID
         }
       ];
-      return updateActiveRep(rule.id, rule.activeReplications, false, function(err) {
+      return updateActiveRep(rule.id, rule.activeReplications, function(err) {
         return callback(err);
       });
     }
@@ -338,61 +350,38 @@ saveReplication = function(rule, userID, replicationID, callback) {
   }
 };
 
-updateActiveRep = function(shareID, activeReplications, merge, _callback) {
-  if (merge) {
-    return db.merge(shareID, {
-      activeReplications: activeReplications
-    }, function(err, res) {
-      if (res) {
-        console.log('merge res : ' + JSON.stringify(res));
-      }
-      return callback(err);
-    });
-  } else {
-    return db.get(shareID, function(err, doc) {
-      if (err) {
+removeReplication = function(rule, replicationID, callback) {
+  if ((rule != null) && (replicationID != null)) {
+    return cancelReplication(replicationID, function(err) {
+      var i, rep, _i, _len, _ref, _results;
+      if (err != null) {
         return callback(err);
       } else {
-        doc.activeReplications = activeReplications;
-        return db.save(shareID, doc, function(err, res) {
-          if (res) {
-            console.log('res save : ' + JSON.stringify(res));
+        if (rule.activeReplications != null) {
+          _ref = rule.activeReplications;
+          _results = [];
+          for (i = _i = 0, _len = _ref.length; _i < _len; i = ++_i) {
+            rep = _ref[i];
+            if (rep.replicationID === replicationID) {
+              rule.activeReplications.splice(i, 1);
+              _results.push(updateActiveRep(rule.id, rule.activeReplications, function(err) {
+                return callback(err);
+              }));
+            } else {
+              _results.push(void 0);
+            }
           }
-          return callback(err);
-        });
+          return _results;
+        } else {
+          return updateActiveRep(rule.id, [], function(err) {
+            return callback(err);
+          });
+        }
       }
     });
+  } else {
+    return callback(null);
   }
-};
-
-removeReplication = function(rule, replicationID, callback) {
-  return cancelReplication(replicationID, function(err) {
-    var i, rep, _i, _len, _ref, _results;
-    if (err != null) {
-      return callback(err);
-    } else {
-      if (rule.activeReplications != null) {
-        _ref = rule.activeReplication;
-        _results = [];
-        for (i = _i = 0, _len = _ref.length; _i < _len; i = ++_i) {
-          rep = _ref[i];
-          if (rep.replicationID === replicationID) {
-            rule.activeReplications.slice(i, 1);
-            _results.push(updateActiveRep(rule.id, rule.activeReplications, function(err) {
-              return callback(err);
-            }));
-          } else {
-            _results.push(void 0);
-          }
-        }
-        return _results;
-      } else {
-        return updateActiveRep(rule.id, [], function(err) {
-          return callback(err);
-        });
-      }
-    }
-  });
 };
 
 cancelReplication = function(replicationID, callback) {
@@ -402,15 +391,13 @@ cancelReplication = function(replicationID, callback) {
     replication_id: replicationID,
     cancel: true
   };
-  console.log('args ' + JSON.stringify(args));
+  console.log('cancel args ' + JSON.stringify(args));
   return couchClient.post("_replicate", args, function(err, res, body) {
     if (err) {
       return callback(err);
-    } else if (!body.ok) {
-      console.log(JSON.stringify(body));
-      return callback(body);
     } else {
-      console.log('Cancel replication ok');
+      console.log('Cancel replication');
+      console.log(JSON.stringify(body));
       return callback();
     }
   });
@@ -482,12 +469,15 @@ module.exports.insertRules = function(callback) {
     });
   };
   return async.eachSeries(rules, insertShare, function(err) {
+    if (err == null) {
+      console.log('rules inserted');
+    }
     return callback(err);
   });
 };
 
 module.exports.initRules = function(callback) {
-  return db.view('sharingRules/all', function(err, rules) {
+  return db.view('sharingRule/all', function(err, rules) {
     if (err != null) {
       return callback(new Error("Error in view"));
     }

@@ -4,9 +4,13 @@ java.classpath.push jdbcJar
 plug = java.newInstanceSync 'org.cozy.plug.Plug'
 
 IS_INIT = false
+BOOT_STATUS = 0
 
 isInit = ->
     return IS_INIT
+
+bootStatus = ->
+    return BOOT_STATUS
 
 #initialize PlugDB
 init = (callback) ->
@@ -16,12 +20,14 @@ init = (callback) ->
         callback error: 'PlugDB timed out'
     ), 30000)
 
-    plug.plugInit '/dev/ttyACM0', (err) ->
+    plug.plugInit '/dev/ttyACM0', (err, status) ->
         if timeoutProtect
             clearTimeout timeoutProtect
             if not err?
                 console.log 'PlugDB is ready'
                 IS_INIT = true
+                BOOT_STATUS = status
+
             callback err
 
 
@@ -110,6 +116,7 @@ exports.MATCH_USERS = 0
 exports.MATCH_DOCS = 1
 
 exports.isInit = isInit
+exports.bootStatus = bootStatus
 
 exports.init = init
 exports.insertDocs = insertDocs

@@ -178,7 +178,7 @@ startShares = (acls, callback) ->
 
                 # Start the full sharing process for one user
                 userSharing share.shareID, user, share.docIDs, (err) ->
-                    callback err
+                    _callback err
 
     async.map acls, buildShareData, (err, shares) ->
         console.log 'shares : ' + JSON.stringify shares
@@ -189,19 +189,16 @@ startShares = (acls, callback) ->
 
 # Cancel existing replication, create a new one, and save it
 userSharing = (shareID, user, ids, callback) ->
-    console.log 'user id : ' + user.userID
+    console.log 'share with user : ' + JSON.stringify user
 
     rule = getRuleById shareID
     if rule?
         # Get the replicationID in rules based on the userID
         # Note : need to think more in case several users
         replicationID = getRepID rule.activeReplications, user.userID
-        console.log 'get rep id : ' + replicationID
         # Replication exists for this user, cancel it
         if replicationID?
-            # TODO : remove the repID from the sharing doc
-            # in case the repIDs are differents
-            cancelReplication replicationID, (err) ->
+            removeReplication rule, replicationID, (err) ->
                 if err?
                     callback err
                 else
@@ -231,9 +228,7 @@ replicateDocs = (target, ids, callback) ->
 
     couchClient = request.newClient "http://localhost:5984"
     sourceURL = "http://192.168.50.4:5984/cozy"
-    targetURL = "http://pzjWbznBQPtfJ0es6cvHQKX0cGVqNfHW:" +
-                "NPjnFATLxdvzLxsFh9wzyqSYx4CjG30U" +
-                "@192.168.50.5:5984/cozy"
+    targetURL = "http://pzjWbznBQPtfJ0es6cvHQKX0cGVqNfHW:NPjnFATLxdvzLxsFh9wzyqSYx4CjG30U@192.168.50.5:5984/cozy"
     couchTarget = request.newClient targetURL
 
     repSourceToTarget =
@@ -271,6 +266,22 @@ replicateDocs = (target, ids, callback) ->
                     console.log JSON.stringify body
                     callback err, replicationID
 
+
+
+# Update the sharing doc on the activeReplications field
+updateActiveRep = (shareID, activeReplications, callback) ->
+
+    db.get shareID, (err, doc) ->
+        if err
+            callback err
+        else
+            # Overwrite the activeReplication field, if it exists or not in the doc
+            # Note that a merge would be more efficient in case of existence
+            # but less easy to deal with
+            doc.activeReplications = activeReplications
+            db.save shareID, doc, (err, res) ->
+                callback err
+
 # Write the replication id in the sharing doc and save in RAM
 saveReplication = (rule, userID, replicationID, callback) ->
 
@@ -278,53 +289,37 @@ saveReplication = (rule, userID, replicationID, callback) ->
         if rule.activeReplications?
             rule.activeReplications.push {userID, replicationID}
             # Save the new replication id in the share document
-            updateActiveRep rule.id, rule.activeReplications, true, (err) ->
+            updateActiveRep rule.id, rule.activeReplications, (err) ->
                 callback err
         else
             rule.activeReplications = [{userID, replicationID}]
-            updateActiveRep rule.id, rule.activeReplications, false, (err) ->
+            updateActiveRep rule.id, rule.activeReplications, (err) ->
                 callback err
     else
         callback null
 
-updateActiveRep = (shareID, activeReplications, merge, _callback) ->
-    # There are already replications in DB
-    if merge
-        db.merge shareID, {activeReplications: activeReplications}, (err, res) ->
-            console.log 'merge res : ' + JSON.stringify res if res
-            callback err
-
-    # There is normally no replication yet
-    else
-        db.get shareID, (err, doc) ->
-            if err
-                callback err
-            else
-                doc.activeReplications = activeReplications
-                db.save shareID, doc, (err, res) ->
-                    console.log 'res save : ' + JSON.stringify res if res
-                    callback err
-
 # Remove the replication from RAM and DB
 removeReplication = (rule, replicationID, callback) ->
     # Cancel the replication for couchDB
-    cancelReplication replicationID, (err) ->
-        if err?
-            callback err
-        else
-            # There are active replications
-            if rule.activeReplications?
-                for rep, i in rule.activeReplication
-                    if rep.replicationID == replicationID
-                        rule.activeReplications.slice i, 1
-                        updateActiveRep rule.id, rule.activeReplications, (err) ->
-                            callback err
-            # There is normally no replication written in DB, but check it anyway
-            # to avoid ghost data
+    if rule? and replicationID?
+        cancelReplication replicationID, (err) ->
+            if err?
+                callback err
             else
-                updateActiveRep rule.id, [], (err) ->
-                    callback err
-
+                # There are active replications
+                if rule.activeReplications?
+                    for rep, i in rule.activeReplications
+                        if rep.replicationID == replicationID
+                            rule.activeReplications.splice i, 1
+                            updateActiveRep rule.id, rule.activeReplications, (err) ->
+                                callback err
+                # There is normally no replication written in DB, but check it anyway
+                # to avoid ghost data
+                else
+                    updateActiveRep rule.id, [], (err) ->
+                        callback err
+    else
+        callback null
 
 # Interrupt the running replication
 cancelReplication = (replicationID, callback) ->
@@ -332,16 +327,16 @@ cancelReplication = (replicationID, callback) ->
     args =
         replication_id: replicationID
         cancel: true
-    console.log 'args ' + JSON.stringify args
+    console.log 'cancel args ' + JSON.stringify args
 
     couchClient.post "_replicate", args, (err, res, body) ->
         if err
             callback err
-        else if not body.ok
-            console.log JSON.stringify body
-            callback body
+
         else
-            console.log 'Cancel replication ok'
+            console.log 'Cancel replication'
+            # If !body.ok, the replication failed, but we consider it's not an error
+            console.log JSON.stringify body
             callback()
 
 # Get the url of a contact to share data  with him.
@@ -395,12 +390,13 @@ module.exports.insertRules = (callback) ->
         plug.insertShare rule.id, '', (err) ->
             _callback err
     async.eachSeries rules, insertShare, (err) ->
+        console.log 'rules inserted' unless err?
         callback err
 
 # Called at the DS initialization
 # Note : for the moment a new rule implies a ds reboot to be evaluated
 module.exports.initRules = (callback) ->
-    db.view 'sharingRules/all', (err, rules) ->
+    db.view 'sharingRule/all', (err, rules) ->
         return callback new Error("Error in view") if err?
         rules.forEach (rule) ->
             saveRule rule

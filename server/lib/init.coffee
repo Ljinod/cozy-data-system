@@ -148,5 +148,13 @@ exports.initPlugDB = (callback) ->
 
 # TO BE REMOVED : insert the sharing rules in plugdb
 exports.insertSharesPlugDB = (callback) ->
-    sharing.insertRules (err) ->
-        if err then callback err else callback()
+    console.log 'boot status : ' + plug.bootStatus()
+    if plug.bootStatus() is 50
+        sharing.insertRules (err) ->
+            if err then callback err else callback()
+    else if plug.bootStatus() is 51
+        console.log 'plugdb already init : no rules to insert'
+        callback()
+    else
+        console.log 'plugdb has some troubles'
+        callback()

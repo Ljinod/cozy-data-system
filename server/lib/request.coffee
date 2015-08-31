@@ -244,7 +244,7 @@ initializeDSView = (callback) ->
                 """
 
         # Usefull to manage sharing rules
-        sharingRules:
+        sharingRule:
             all:
                 map: """
                 function(doc) {
