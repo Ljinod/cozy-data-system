@@ -7,30 +7,63 @@ request = require 'request-json'
 # Avoid to request CouchDB for each document
 rules = []
 
+
 # Map the inserted document against all the sharing rules
-# If one or several mapping are trigerred, the result {id, shareid, userParams}
+# If one or several mapping are trigerred, the result {id, shareID, userParams}
 # will be inserted in PlugDB as a Doc and/or a User
-module.exports.mapDocOnInsert = (doc, id, callback) ->
+module.exports.evalInsert = (doc, id, callback) ->
     mapDocInRules doc, id, (err, mapResults) ->
-        # mapResults : [ {docid, userid, shareid, userParams} ]
-        if err
+        # mapResults : [ {docID, userID, shareID, userParams} ]
+        if err?
             callback err
         else
             # Serial loop, to avoid parallel db access
             async.eachSeries mapResults, insertResults, (err) ->
-                console.log 'results : ' + JSON.stringify mapResults
-                callback err, mapResults
+                if err?
+                    callback err
+                else
+                    console.log 'mapping results : ' + JSON.stringify mapResults
+                    matchAfterInsert mapIds, (err, matchIds) ->
+                        if err?
+                            callback err
+                        else if acls? && acls.length > 0
+                            startShares acls, (err) ->
+                                callback err
+                        else
+                            callback null
+
+# Map the upated document against all the sharing rules
+module.exports.evalUpdate = (doc, id, callback) ->
+
+    console.log 'doc : '  + JSON.stringify doc
+    mapDocInRules doc, id, (err, mapResults) ->
+        # mapResults : [ {docID, userID, shareID, userParams} ]
+        if err?
+            callback err
+        else
+            selectInPlug id, (err, selectResults) ->
+                if err?
+                    callback err
+                else
+                    updateProcess id, mapResults, selectResults, (err, res) ->
+                        callback err, res
+
+        # Serial loop, to avoid parallel db access
+        ###async.eachSeries mapResults, updateResults, (err) ->
+            console.log 'mapping results : ' + JSON.stringify mapResults
+            callback err, mapResults
+            ###
 
 # Insert the map result as a tuple in PlugDB, as a Doc and/or as a User
-# mapResult : {docid, userid, shareid, userParams}
+# mapResult : {docID, userID, shareID, userParams}
 insertResults = (mapResult, callback) ->
 
     async.series [
         (_callback) ->
             # There is a doc result
-            if mapResult.docid?
-                plug.insertDoc mapResult.docid, mapResult.shareid, mapResult.userDesc, (err) ->
-                    unless err? then console.log "doc " + mapResult.docid +
+            if mapResult.docID?
+                plug.insertDoc mapResult.docID, mapResult.shareID, mapResult.userDesc, (err) ->
+                    unless err? then console.log "doc " + mapResult.docID +
                                             " inserted in PlugDB"
                     if err? then _callback err else _callback null
             else
@@ -38,15 +71,116 @@ insertResults = (mapResult, callback) ->
         ,
         (_callback) ->
             # There is an user result
-            if mapResult.userid?
-                plug.insertUser mapResult.userid, mapResult.shareid, mapResult.userDesc, (err) ->
-                    unless err? then console.log "user " + mapResult.userid +
+            if mapResult.userID?
+                plug.insertUser mapResult.userID, mapResult.shareID, mapResult.userDesc, (err) ->
+                    unless err? then console.log "user " + mapResult.userID +
                                             " inserted in PlugDB"
                     if err? then _callback err else _callback null
             else
                 _callback null
     ],
     (err) ->
+        callback err
+
+
+# Insert the map result as a tuple in PlugDB, as a Doc and/or as a User
+# mapResult : {docID, userID, shareID, userParams}
+updateResults = (mapResult, callback) ->
+    async.series [
+        (_callback) ->
+            # There is a doc result
+            if mapResult.docID?
+                plug.insertDoc mapResult.docID, mapResult.shareID, mapResult.userDesc, (err) ->
+                    unless err? then console.log "doc " + mapResult.docID +
+                                            " inserted in PlugDB"
+                    if err? then _callback err else _callback null
+            else
+                _callback null
+        ,
+        (_callback) ->
+            # There is an user result
+            if mapResult.userID?
+                plug.insertUser mapResult.userID, mapResult.shareID, mapResult.userDesc, (err) ->
+                    unless err? then console.log "user " + mapResult.userID +
+                                            " inserted in PlugDB"
+                    if err? then _callback err else _callback null
+            else
+                _callback null
+    ],
+    (err) ->
+        callback err
+
+
+selectInPlug = (id, callback) ->
+
+    async.series [
+        (_callback) ->
+            plug.plugSelectDocsByDocID id, (err, tuples) ->
+                if err?
+                     _callback err
+                 else
+                    res = convertTuples tuples
+                    _callback null, res
+        ,
+        (_callback) ->
+            plug.plugSelectUsersByUserID id, (err, tuples) ->
+                if err?
+                     _callback err
+                 else
+                    res = convertTuples tuples
+                    _callback null, res
+    ],
+    # results : [ [{selecDoc}], [{selectUser}] ]
+    (err, results) ->
+        console.log 'tuples select : ' + JSON.stringify results if results
+        callback err, results
+
+
+updateProcess = (id, mapResults, selectResults, callback) ->
+
+    existDocOrUser = (shareID) ->
+        doc = shareIDInArray selectResults[0], shareID
+        user = shareIDInArray selectResults[1], shareID
+        return [doc, user]
+
+    evalUpdate = (rule, _callback) ->
+        # There is probably a way to optimize here :
+        # For each sharing rule, loop on map and select results...
+        mapRes = shareIDInArray mapResults, rule.id
+        selectRes = existDocOrUser rule.id
+
+        if mapRes?
+            if selectRes[0]? || selectRes[1]?
+                console.log 'map and select ok for ' + rule.id
+                # do nothing
+            else
+                console.log 'map ok for ' + rule.id
+                # insert + match
+                # TODO : must be done in series to avoid multiple inserts/select
+                # TODO : create matchin function to simplify
+                insertResults mapRes, (err) ->
+                    if err?
+                        _callback err
+                    else
+                        matching mapRes, (err, acl) ->
+                            if err
+                                _callback err
+                            else
+                                if acl?
+                                    sharingProcess acl, (err) ->
+                                        _callback err
+                                else
+                                    _callback null
+        else
+            if selectRes[0]? || selectRes[1]?
+                console.log 'select ok for ' + rule.id
+                # remove id in plug + invert match
+            else
+                console.log 'map and select not ok for ' + rule.id
+                # do nothing
+        _callback()
+
+    async.eachSeries rules, evalUpdate, (err) ->
         callback err
 
 #Select doc into PlugDB
@@ -67,15 +201,15 @@ mapDocInRules = (doc, id, callback) ->
     evalRule = (rule, _callback) ->
 
         mapResult =
-            docid: null
-            userid: null
-            shareid: null
+            docID: null
+            userID: null
+            shareID: null
             userParams: null
 
         # Save the result of the mapping
-        saveResult = (id, shareid, userParams, isDoc) ->
-            if isDoc then mapResult.docid = id else mapResult.userid = id
-            mapResult.shareid = shareid
+        saveResult = (id, shareID, userParams, isDoc) ->
+            if isDoc then mapResult.docID = id else mapResult.userID = id
+            mapResult.shareID = shareID
             mapResult.userParams = userParams
 
         filterDoc = rule.filterDoc
@@ -91,13 +225,13 @@ mapDocInRules = (doc, id, callback) ->
                 if userMaped then console.log 'user maped !! '
                 saveResult id, rule.id, filterUser.userParam, false if userMaped
 
-                if not mapResult.docid? && not mapResult.userid?
+                if not mapResult.docID? && not mapResult.userID?
                     _callback null, null
                 else
                     _callback null, mapResult
 
     # Evaluate all the rules
-    # mapResults : [ {docid, userid, shareid, userParams} ]
+    # mapResults : [ {docID, userID, shareID, userParams} ]
     async.map rules, evalRule, (err, mapResults) ->
         # Convert to array and remove null results
         mapResults = Array.prototype.slice.call( mapResults )
@@ -106,85 +240,70 @@ mapDocInRules = (doc, id, callback) ->
 
 
 # Generic map : evaluate the rule in the filter against the doc
-mapDoc = (doc, docid, shareid, filter, callback) ->
+mapDoc = (doc, docID, shareID, filter, callback) ->
     if eval filter.rule
         if filter.userDesc then ret = eval filer.userDesc else ret = true
         callback ret
     else
         callback false
 
+
+
 # Call the matching operator in PlugDB and share the results if any
-module.exports.matchAfterInsert = (mapResults, callback) ->
-
-    # Send the match command to PlugDB
-    matching = (mapResult, _callback) ->
-        if mapResult.docid?
-            matchType = plug.MATCH_USERS
-            id = mapResult.docid
-        else
-            matchType = plug.MATCH_DOCS
-            id = mapResult.userid
-
-        plug.matchAll matchType, id, mapResult.shareid, (err, acl) ->
-            if acl?
-                acl = Array.prototype.slice.call( acl )
-                acl.unshift mapResult.shareid
-            #console.log 'res match : ' + JSON.stringify acl if acl?
-
-            _callback err, acl
+matchAfterInsert = (mapResults, callback) ->
 
     # Match all results
     if mapResults?
+        # Convert to array
+        console.log 'mapResults : ' + JSON.stringify mapResults
         async.mapSeries mapResults, matching, (err, acls) ->
-            if err
-                callback err
-            else
-                removeNullValues acls
-
-                if acls? && acls.length > 0
-                    startShares acls, (err) ->
-                        callback err
-                else
-                    callback null
+            callback err, acls
     else
         callback null
 
+
+# Send the match command to PlugDB
+matching = (mapResult, _callback) ->
+    console.log 'go match : ' + JSON.stringify mapResult
+
+    if mapResult.docID?
+        matchType = plug.MATCH_USERS
+        id = mapResult.docID
+    else if mapResult.userID?
+        matchType = plug.MATCH_DOCS
+        id = mapResult.userID
+    else
+        _callback null
+
+    #if acl?
+    # Add the shareID at the beginning
+    # acl = Array.prototype.slice.call( acl )
+    # acl.unshift mapResult.shareID
+    plug.matchAll matchType, id, mapResult.shareID, (err, acl) ->
+        _callback err, acl
+
 startShares = (acls, callback) ->
 
-    buildShareData = (acl, _callback) ->
-        share =
-            shareID: null
-            users: []
-            docIDs: []
+    async.each acls, sharingProcess, (err) ->
+        callback err
 
-        # Each acl concerns one sharing rule
-        for id,i in acl
-            if i == 0
-                share.shareID = id
-            else
-                userID = id[0]
-                docID = id[1]
-                share.users.push {userID} unless userInArray share.users, userID
-                share.docIDs.push docID unless share.users.length > 1
 
-        _callback null, share
+sharingProcess = (share, callback) ->
+    console.log 'share : ' + JSON.stringify share
+    if share? and share.users?
+        async.each share.users, (user, _callback) ->
 
-    sharingProcess = (share, _callback) ->
-        for user in share.users
-            # Get remote address based on userid
+            # Get remote address based on userID
             getCozyAddressFromUserID user.userID, (err, url) ->
                 # TODO : handle errors and empty url
                 user.target = url
 
                 # Start the full sharing process for one user
                 userSharing share.shareID, user, share.docIDs, (err) ->
-                    _callback err
+                    if err? then _callback err else _callback null
 
-    async.map acls, buildShareData, (err, shares) ->
-        console.log 'shares : ' + JSON.stringify shares
-        async.each shares, sharingProcess, (err) ->
+        , (err) ->
             callback err
-
 
 
 # Cancel existing replication, create a new one, and save it
@@ -224,7 +343,7 @@ shareDocs = (user, ids, rule, callback) ->
 # Share the ids to the specifiedtarget
 replicateDocs = (target, ids, callback) ->
 
-    console.log 'lets replicate ' + ids + ' on target ' + target
+    console.log 'lets replicate ' + JSON.stringify ids + ' on target ' + target
 
     couchClient = request.newClient "http://localhost:5984"
     sourceURL = "http://192.168.50.4:5984/cozy"
@@ -415,14 +534,20 @@ getRepID= (array, userID) ->
         for activeRep in array
             return activeRep.replicationID if activeRep.userID == userID
 
+shareIDInArray = (array, shareID) ->
+    if array?
+        return ar for ar in array when ar.shareID == shareID
+    return null
+
 getRuleById = (shareID, callback) ->
     for rule in rules
         return rule if rule.id == shareID
 
 
 removeNullValues = (array) ->
-    for i in [array.length-1..0]
-        array.splice(i, 1) if array[i] is null
+    if array?
+        for i in [array.length-1..0]
+            array.splice(i, 1) if array[i] is null
 
 removeDuplicates = (array) ->
     if array.length == 0
@@ -430,3 +555,13 @@ removeDuplicates = (array) ->
     res = {}
     res[array[key]] = array[key] for key in [0..array.length-1]
     value for key, value of res
+
+convertTuples = (tuples, callback) ->
+    if tuples?
+        array = []
+        for tuple in tuples
+            res =
+                shareID: tuple[2]
+                userParams: tuple[3]
+            array.push res
+        return array

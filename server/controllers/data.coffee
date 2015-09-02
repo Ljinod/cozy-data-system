@@ -91,15 +91,10 @@ module.exports.create = (req, res, next) ->
                         err.status = 409
                         next err
                     else
-                        # map the doc against the sharing rules
-                        sharing.mapDocOnInsert req.body, doc.id, (err, mapIds) ->
+                        # Eval the doc against the sharing rules
+                        sharing.evalInsert req.body, doc.id, (err) ->
                             if err?
-                                console.log 'Error on the mapping : ' + JSON.stringify err
-                            else if mapIds? && mapIds.length > 0
-                                console.log "doc inserted, let's match now"
-                                sharing.matchAfterInsert mapIds, (err, matchIds) ->
-                                    if err?
-                                        console.log 'Error on the matching : ' + JSON.stringify err
+                                console.log 'Eval error : ' + JSON.stringify err
 
                         res.send 201, _id: doc.id
     else
@@ -107,14 +102,9 @@ module.exports.create = (req, res, next) ->
             if err
                 next err
             else
-                sharing.mapDocOnInsert req.body, doc.id, (err, mapIds) ->
+                sharing.evalInsert req.body, doc.id, (err) ->
                     if err?
-                        console.log 'Error on the mapping : ' + JSON.stringify err
-                    else if mapIds? && mapIds.length > 0
-                        console.log "doc inserted, let's match now"
-                        sharing.matchAfterInsert mapIds, (err, matchIds) ->
-                            if err?
-                                console.log 'Error on the matching : ' + JSON.stringify err
+                        console.log 'Eval error : ' + JSON.stringify err
                 res.send 201, _id: doc.id
 
 # PUT /data/:id/
@@ -168,6 +158,13 @@ module.exports.delete = (req, res, next) ->
 # this doesn't take care of conflict (erase DB with the sent value)
 module.exports.merge = (req, res, next) ->
     console.log 'this is a merge'
+    sharing.evalUpdate req.body, req.params.id, (err, mapIds) ->
+        if err?
+            console.log 'Error on the mapping : ' + JSON.stringify err
+        else
+            console.log 'mapping merge ok'
+
+
     delete req.body._attachments # attachments management has a dedicated API
     db.merge req.params.id, req.body, (err, doc) ->
         if err

@@ -215,11 +215,19 @@ exports.initPlugDB = function(callback) {
 };
 
 exports.insertSharesPlugDB = function(callback) {
-  return sharing.insertRules(function(err) {
-    if (err) {
-      return callback(err);
-    } else {
-      return callback();
-    }
-  });
+  if (plug.bootStatus() === 50) {
+    return sharing.insertRules(function(err) {
+      if (err) {
+        return callback(err);
+      } else {
+        return callback();
+      }
+    });
+  } else if (plug.bootStatus() === 51) {
+    console.log('plugdb already init : no rules to insert');
+    return callback();
+  } else {
+    console.log('plugdb has some troubles');
+    return callback();
+  }
 };

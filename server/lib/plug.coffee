@@ -68,32 +68,52 @@ selectUsers = (callback) ->
     return
   return
 
-#select star on docs to return the ids
-selectSingleDoc = (docid, callback) ->
-  plug.plugSelectSingleDoc docid, (err, result) ->
-    callback err, result
-    return
-  return
+# Select star on docs where docID = ?
+# Returns an acl[][] array
+plugSelectDocsByDocID = (docid, callback) ->
+    plug.plugSelectDocsByDocID docid, (err, result) ->
+        callback err, result
 
-#select star on docs to return the ids
-selectSingleUser = (userid, callback) ->
-  plug.plugSelectSingleUser userid, (err, result) ->
-    callback err, result
-    return
-  return
+# Select star on users where userID = ?
+# Returns an acl[][] array
+plugSelectUsersByUserID = (userid, callback) ->
+    plug.plugSelectUsersByUserID userid, (err, result) ->
+        callback err, result
 
 # Match the doc/user to create new ACLs
 # Returns an acl[][] array, containing all the [userids, docids] for
 # the shareid
 matchAll = (matchingType, id, shareid, callback) ->
-    plug.plugMatchAll matchingType, id, shareid, (err, result) ->
-        callback err, result
+    plug.plugMatchAll matchingType, id, shareid, (err, tuples) ->
+        buildACL tuples, shareid, (acl) ->
+            callback err, acl
 
 # Match the doc/user to create new ACLs
 # Returns an acl[][] array, containing the inserted [userids, docids]
 match = (matchingType, id, shareid, callback) ->
     plug.plugMatch matchingType, id, shareid, (err, result) ->
         callback err, result
+
+buildACL = (tuples, shareid, callback) ->
+
+    userInArray = (array, userID) ->
+        if array?
+            return yes for ar in array when ar.userID == userID
+        return no
+
+    if tuples?
+        res =
+            shareID: shareid
+            users: []
+            docIDs: []
+
+        for tuple in tuples
+            res.users.push {userID: tuple[0]} unless userInArray res.users, tuple[0]
+            res.docIDs.push tuple[1] unless res.users.length > 1
+
+        callback res
+    else
+        callback null
 
 #close the connection and save the data on flash
 close = (callback) ->
@@ -125,8 +145,8 @@ exports.insertUser = insertUser
 exports.insertShare = insertShare
 exports.selectDocs = selectDocs
 exports.selectUsers = selectUsers
-exports.selectSingleDoc = selectSingleDoc
-exports.selectSingleUser = selectSingleUser
+exports.plugSelectDocsByDocID = plugSelectDocsByDocID
+exports.plugSelectUsersByUserID = plugSelectUsersByUserID
 exports.matchAll = matchAll
 exports.match = match
 exports.close = close

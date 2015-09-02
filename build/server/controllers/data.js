@@ -100,13 +100,13 @@ module.exports.create = function(req, res, next) {
             return next(err);
           } else {
             sharing.mapDocOnInsert(req.body, doc.id, function(err, mapIds) {
-              if (err) {
+              if (err != null) {
                 return console.log('Error on the mapping : ' + JSON.stringify(err));
               } else if ((mapIds != null) && mapIds.length > 0) {
                 console.log("doc inserted, let's match now");
                 return sharing.matchAfterInsert(mapIds, function(err, matchIds) {
-                  if (err) {
-                    return console.log('Error on the matching : ' + +JSON.stringify(err));
+                  if (err != null) {
+                    return console.log('Error on the matching : ' + JSON.stringify(err));
                   }
                 });
               }
@@ -124,13 +124,13 @@ module.exports.create = function(req, res, next) {
         return next(err);
       } else {
         sharing.mapDocOnInsert(req.body, doc.id, function(err, mapIds) {
-          if (err) {
-            return console.log('Error on the mapping : ' + +JSON.stringify(err));
+          if (err != null) {
+            return console.log('Error on the mapping : ' + JSON.stringify(err));
           } else if ((mapIds != null) && mapIds.length > 0) {
             console.log("doc inserted, let's match now");
             return sharing.matchAfterInsert(mapIds, function(err, matchIds) {
-              if (err) {
-                return console.log('Error on the matching : ' + +JSON.stringify(err));
+              if (err != null) {
+                return console.log('Error on the matching : ' + JSON.stringify(err));
               }
             });
           }
@@ -144,6 +144,7 @@ module.exports.create = function(req, res, next) {
 };
 
 module.exports.update = function(req, res, next) {
+  console.log('this is a update');
   delete req.body._attachments;
   return db.save(req.params.id, req.body, function(err, response) {
     if (err) {
@@ -158,6 +159,7 @@ module.exports.update = function(req, res, next) {
 };
 
 module.exports.upsert = function(req, res, next) {
+  console.log('this is a upsert');
   delete req.body._attachments;
   return db.get(req.params.id, function(err, doc) {
     return db.save(req.params.id, req.body, function(err, savedDoc) {
@@ -199,6 +201,14 @@ module.exports["delete"] = function(req, res, next) {
 };
 
 module.exports.merge = function(req, res, next) {
+  console.log('this is a merge');
+  sharing.mapDocOnUpdate(req.body, req.params.id, function(err, mapIds) {
+    if (err != null) {
+      return console.log('Error on the mapping : ' + JSON.stringify(err));
+    } else {
+      return console.log('mapping merge ok');
+    }
+  });
   delete req.body._attachments;
   return db.merge(req.params.id, req.body, function(err, doc) {
     if (err) {
