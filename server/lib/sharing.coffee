@@ -23,7 +23,7 @@ module.exports.evalInsert = (doc, id, callback) ->
                     callback err
                 else
                     console.log 'mapping results : ' + JSON.stringify mapResults
-                    matchAfterInsert mapIds, (err, matchIds) ->
+                    matchAfterInsert mapResults, (err, acls) ->
                         if err?
                             callback err
                         else if acls? && acls.length > 0
@@ -253,7 +253,7 @@ mapDoc = (doc, docID, shareID, filter, callback) ->
 matchAfterInsert = (mapResults, callback) ->
 
     # Match all results
-    if mapResults?
+    if mapResults? and mapResults.length > 0
         # Convert to array
         console.log 'mapResults : ' + JSON.stringify mapResults
         async.mapSeries mapResults, matching, (err, acls) ->
@@ -304,7 +304,8 @@ sharingProcess = (share, callback) ->
 
         , (err) ->
             callback err
-
+    else
+        callback null
 
 # Cancel existing replication, create a new one, and save it
 userSharing = (shareID, user, ids, callback) ->
@@ -431,7 +432,8 @@ removeReplication = (rule, replicationID, callback) ->
                         if rep.replicationID == replicationID
                             rule.activeReplications.splice i, 1
                             updateActiveRep rule.id, rule.activeReplications, (err) ->
-                                callback err
+                                callback err if err?
+                    callback null
                 # There is normally no replication written in DB, but check it anyway
                 # to avoid ghost data
                 else

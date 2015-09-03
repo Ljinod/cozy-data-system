@@ -77,6 +77,8 @@ module.exports.find = (req, res) ->
 # POST /data/:id/
 # POST /data/
 module.exports.create = (req, res, next) ->
+    console.log 'this is an insert'
+
     delete req.body._attachments # attachments management has a dedicated API
     if req.params.id?
         db.get req.params.id, (err, doc) -> # this GET needed because of cache
