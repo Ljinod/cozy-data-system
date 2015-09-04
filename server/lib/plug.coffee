@@ -26,7 +26,9 @@ buildSelect = (table, tuples, callback) ->
                 shareID: tuple[2]
                 userParams: tuple[3]
             array.push res
-        return array
+        callback res
+    else
+        callback null
 
 buildSelectDoc = (tuples, callback) ->
     if tuples?
@@ -38,7 +40,9 @@ buildSelectDoc = (tuples, callback) ->
                 shareID: tuple[2]
                 userParams: tuple[3]
             array.push res
-        return array
+        callback res
+    else
+        callback null
 
 buildACL = (tuples, shareid, callback) ->
 
@@ -136,21 +140,19 @@ selectUsers = (callback) ->
 # Returns an acl[][] array
 selectDocsByDocID = (docid, callback) ->
     plug.plugSelectDocsByDocID docid, (err, tuples) ->
-        if err?
-            callback err
+        if err? then callback err
         else
-            buildSelect DOCS, tuples, (err, result) ->
-                callback err, result
+            buildSelect DOCS, tuples, (result) ->
+                callback null, result
 
 # Select star on users where userID = ?
 # Returns an acl[][] array
 selectUsersByUserID = (userid, callback) ->
     plug.plugSelectUsersByUserID userid, (err, tuples) ->
-        if err?
-            callback err
+        if err? then callback err
         else
-            buildSelect USERS, tuples, (err, result) ->
-                callback err, result
+            buildSelect USERS, tuples, (result) ->
+                callback null, result
 
 # Match the doc/user to create new ACLs
 # Returns an acl[][] array, containing all the [userids, docids] for
@@ -170,6 +172,7 @@ match = (matchingType, id, shareid, callback) ->
 # Returns an acl[][] array, containing all the [userids, docids] for
 # the shareid
 deleteMatch = match = (matchingType, idPlug, shareid, callback) ->
+    console.log 'go delete ' + matchingType + ' on id ' + idPlug + ' share id: ' + shareid
     plug.plugDeleteMatch matchingType, idPlug, shareid, (err, tuples) ->
         buildACL tuples, shareid, (acl) ->
             callback err, acl

@@ -32,22 +32,20 @@ module.exports.evalInsert = (doc, id, callback) ->
 
 # Map the upated document against all the sharing rules
 module.exports.evalUpdate = (doc, id, callback) ->
-    # Ask for the full document in case some fields are missing, eg the docType
-    db.get id, (err, doc) ->
-        if err? then callback err
+    # Warning : in some case, eg tasky, the doctype is not specified, whereas
+    # it should be. See more cases to decide how to handle it
+    console.log 'doc update : '  + JSON.stringify doc
+    mapDocInRules doc, id, (err, mapResults) ->
+        # mapResults : [ {docID, userID, shareID, userParams} ]
+        if err?
+            callback err
         else
-            console.log 'doc update : '  + JSON.stringify doc
-            mapDocInRules doc, id, (err, mapResults) ->
-                # mapResults : [ {docID, userID, shareID, userParams} ]
-                if err?
-                    callback err
+            selectInPlug id, (err, selectResults) ->
+                if err? then callback err
                 else
-                    selectInPlug id, (err, selectResults) ->
-                        if err? then callback err
-                        else
-                            console.log 'select results : ' + JSON.stringify selectResults
-                            updateProcess id, mapResults, selectResults, (err, res) ->
-                                callback err, res
+                    console.log 'select results : ' + JSON.stringify selectResults
+                    updateProcess id, mapResults, selectResults, (err, res) ->
+                        callback err, res
 
         # Serial loop, to avoid parallel db access
         ###async.eachSeries mapResults, updateResults, (err) ->
@@ -96,6 +94,8 @@ deleteResults = (select, callback) ->
                                 _callback err, res
                         else
                             _callback null
+            else
+                _callback null
         ,
         (_callback) ->
             # There is a user result
@@ -108,8 +108,11 @@ deleteResults = (select, callback) ->
                                 _callback err, res
                         else
                             _callback null
+            else
+                _callback null
     ],
     (err, results) ->
+        console.log 'delete results : ' + JSON.stringify results if results?
         callback err, results
 
 
@@ -167,8 +170,11 @@ selectInPlug = (id, callback) ->
 updateProcess = (id, mapResults, selectResults, callback) ->
 
     existDocOrUser = (shareID) ->
-        doc = shareIDInArray selectResults[0], shareID
-        user = shareIDInArray selectResults[1], shareID
+        if selectResults[0]? and selectResults[0].shareID?
+            doc = selectResults[0] if selectResults[0].shareID == shareID
+            console.log 'doc : ' + JSON.stringify doc
+        if selectResults[1]? and selectResults[1].shareID?
+            user =  selectResults[1] if selectResults[1].shareID == shareID
         return {doc, user}
 
     evalUpdate = (rule, _callback) ->
@@ -176,6 +182,8 @@ updateProcess = (id, mapResults, selectResults, callback) ->
         # For each sharing rule, loop on map and select results...
         mapRes = shareIDInArray mapResults, rule.id
         selectResult = existDocOrUser rule.id
+        console.log 'map res : ' + JSON.stringify mapRes
+        console.log 'select result : ' + JSON.stringify selectResult
 
         if mapRes?
             # do nothing
@@ -204,10 +212,10 @@ updateProcess = (id, mapResults, selectResults, callback) ->
             if selectResult.doc? || selectResult.user?
                 console.log 'select ok for ' + rule.id
                 deleteResults selectResult, (err, acls) ->
-                    if err then _callback err
+                    if err? then _callback err
                     else if acls?
                         startShares acls, (err) ->
-                                _callback err
+                            _callback err
                     else
                         _callback null
 
@@ -567,6 +575,7 @@ getRepID= (array, userID) ->
 
 shareIDInArray = (array, shareID) ->
     if array?
+        console.log 'array : ' + JSON.stringify array
         return ar for ar in array when ar.shareID == shareID
     return null
 
