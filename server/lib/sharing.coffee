@@ -89,7 +89,7 @@ deleteResults = (select, callback) ->
                 plug.deleteMatch plug.USERS, select.doc.idPlug, select.doc.shareID, (err, res) ->
                     if err? then _callback err
                     else
-                        if res? and res.length > 0
+                        if res?
                             plug.deleteDoc select.doc.idPlug, (err) ->
                                 _callback err, res
                         else
@@ -103,7 +103,7 @@ deleteResults = (select, callback) ->
                 plug.deleteMatch plug.DOCS, select.user.idPlug, select.user.shareID, (err, res) ->
                     if err? then _callback err
                     else
-                        if res? and res.length > 0
+                        if res?
                             plug.deleteDoc select.user.idPlug, (err) ->
                                 _callback err, res
                         else

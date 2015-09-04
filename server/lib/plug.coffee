@@ -109,17 +109,17 @@ insertShare = (shareid, description, callback) ->
 
 #delete doc
 deleteDoc = (idGlobal, callback) ->
-    plug.plugDeleteDoc idGlobal, (err) ->
+    plug.plugDeleteDoc parseInt(idGlobal), (err) ->
         callback err
 
 #delete user
 deleteUser = (idGlobal, callback) ->
-    plug.plugDeleteUser idGlobal, (err) ->
+    plug.plugDeleteUser parseInt(idGlobal), (err) ->
         callback err
 
 #delete share
 deleteShare = (idGlobal, callback) ->
-    plug.plugDeleteShare idGlobal, (err) ->
+    plug.plugDeleteShare parseInt(idGlobal), (err) ->
         callback err
 
 #select docs to return the ids
@@ -171,10 +171,11 @@ match = (matchingType, id, shareid, callback) ->
 # Delete the acl matching for a particular user or doc in a share
 # Returns an acl[][] array, containing all the [userids, docids] for
 # the shareid
-deleteMatch = match = (matchingType, idPlug, shareid, callback) ->
+deleteMatch = (matchingType, idPlug, shareid, callback) ->
     console.log 'go delete ' + matchingType + ' on id ' + idPlug + ' share id: ' + shareid
-    plug.plugDeleteMatch matchingType, idPlug, shareid, (err, tuples) ->
+    plug.plugDeleteMatch matchingType, parseInt(idPlug), shareid, (err, tuples) ->
         buildACL tuples, shareid, (acl) ->
+            console.log 'acl : ' + JSON.stringify acl
             callback err, acl
 
 
