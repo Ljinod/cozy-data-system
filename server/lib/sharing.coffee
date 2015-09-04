@@ -36,7 +36,7 @@ module.exports.evalUpdate = (doc, id, callback) ->
     db.get id, (err, doc) ->
         if err? then callback err
         else
-            console.log 'doc : '  + JSON.stringify doc
+            console.log 'doc update : '  + JSON.stringify doc
             mapDocInRules doc, id, (err, mapResults) ->
                 # mapResults : [ {docID, userID, shareID, userParams} ]
                 if err?
@@ -352,6 +352,7 @@ userSharing = (shareID, user, ids, callback) ->
         # Get the replicationID in rules based on the userID
         # Note : need to think more in case several users
         replicationID = getRepID rule.activeReplications, user.userID
+        console.log 'replication id : ' + replicationID
         # Replication exists for this user, cancel it
         if replicationID?
             removeReplication rule, replicationID, (err) ->

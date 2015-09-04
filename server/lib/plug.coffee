@@ -5,6 +5,8 @@ plug = java.newInstanceSync 'org.cozy.plug.Plug'
 
 IS_INIT = false
 BOOT_STATUS = 0
+USERS = 0
+DOCS = 1
 
 isInit = ->
     return IS_INIT
@@ -191,8 +193,8 @@ authFP = (callback) ->
     return
   return
 
-exports.USERS = 0
-exports.DOCS = 1
+exports.USERS = USERS
+exports.DOCS = DOCS
 
 exports.isInit = isInit
 exports.bootStatus = bootStatus
@@ -207,8 +209,8 @@ exports.deleteUser = deleteUser
 exports.deleteShare = deleteShare
 exports.selectDocs = selectDocs
 exports.selectUsers = selectUsers
-exports.selectDocsByDocID = plugSelectDocsByDocID
-exports.selectUsersByUserID = plugSelectUsersByUserID
+exports.selectDocsByDocID = selectDocsByDocID
+exports.selectUsersByUserID = selectUsersByUserID
 exports.matchAll = matchAll
 exports.match = match
 exports.deleteMatch = deleteMatch
