@@ -14,8 +14,7 @@ rules = []
 module.exports.evalInsert = (doc, id, callback) ->
     mapDocInRules doc, id, (err, mapResults) ->
         # mapResults : [ {docID, userID, shareID, userParams} ]
-        if err?
-            callback err
+        if err? then callback err
         else
             # Serial loop, to avoid parallel db access
             async.eachSeries mapResults, insertResults, (err) ->
@@ -24,8 +23,7 @@ module.exports.evalInsert = (doc, id, callback) ->
                 else
                     console.log 'mapping results : ' + JSON.stringify mapResults
                     matchAfterInsert mapResults, (err, acls) ->
-                        if err?
-                            callback err
+                        if err? then callback err
                         else if acls? && acls.length > 0
                             startShares acls, (err) ->
                                 callback err
@@ -34,19 +32,22 @@ module.exports.evalInsert = (doc, id, callback) ->
 
 # Map the upated document against all the sharing rules
 module.exports.evalUpdate = (doc, id, callback) ->
-
-    console.log 'doc : '  + JSON.stringify doc
-    mapDocInRules doc, id, (err, mapResults) ->
-        # mapResults : [ {docID, userID, shareID, userParams} ]
-        if err?
-            callback err
+    # Ask for the full document in case some fields are missing, eg the docType
+    db.get id, (err, doc) ->
+        if err? then callback err
         else
-            selectInPlug id, (err, selectResults) ->
+            console.log 'doc : '  + JSON.stringify doc
+            mapDocInRules doc, id, (err, mapResults) ->
+                # mapResults : [ {docID, userID, shareID, userParams} ]
                 if err?
                     callback err
                 else
-                    updateProcess id, mapResults, selectResults, (err, res) ->
-                        callback err, res
+                    selectInPlug id, (err, selectResults) ->
+                        if err? then callback err
+                        else
+                            console.log 'select results : ' + JSON.stringify selectResults
+                            updateProcess id, mapResults, selectResults, (err, res) ->
+                                callback err, res
 
         # Serial loop, to avoid parallel db access
         ###async.eachSeries mapResults, updateResults, (err) ->
@@ -82,6 +83,35 @@ insertResults = (mapResult, callback) ->
     (err) ->
         callback err
 
+deleteResults = (select, callback) ->
+    async.series [
+        (_callback) ->
+            # There is a doc result
+            if select.doc?
+                plug.deleteMatch plug.USERS, select.doc.idPlug, select.doc.shareID, (err, res) ->
+                    if err? then _callback err
+                    else
+                        if res? and res.length > 0
+                            plug.deleteDoc select.doc.idPlug, (err) ->
+                                _callback err, res
+                        else
+                            _callback null
+        ,
+        (_callback) ->
+            # There is a user result
+            if select.user?
+                plug.deleteMatch plug.DOCS, select.user.idPlug, select.user.shareID, (err, res) ->
+                    if err? then _callback err
+                    else
+                        if res? and res.length > 0
+                            plug.deleteDoc select.user.idPlug, (err) ->
+                                _callback err, res
+                        else
+                            _callback null
+    ],
+    (err, results) ->
+        callback err, results
+
 
 # Insert the map result as a tuple in PlugDB, as a Doc and/or as a User
 # mapResult : {docID, userID, shareID, userParams}
@@ -115,19 +145,17 @@ selectInPlug = (id, callback) ->
 
     async.series [
         (_callback) ->
-            plug.plugSelectDocsByDocID id, (err, tuples) ->
-                if err?
-                     _callback err
-                 else
-                    res = convertTuples tuples
+            plug.selectDocsByDocID id, (err, res) ->
+                if err? then _callback err
+                else
+                    #res = convertTuples tuples
                     _callback null, res
         ,
         (_callback) ->
-            plug.plugSelectUsersByUserID id, (err, tuples) ->
-                if err?
-                     _callback err
-                 else
-                    res = convertTuples tuples
+            plug.selectUsersByUserID id, (err, res) ->
+                if err? then _callback err
+                else
+                    #res = convertTuples tuples
                     _callback null, res
     ],
     # results : [ [{selecDoc}], [{selectUser}] ]
@@ -141,30 +169,30 @@ updateProcess = (id, mapResults, selectResults, callback) ->
     existDocOrUser = (shareID) ->
         doc = shareIDInArray selectResults[0], shareID
         user = shareIDInArray selectResults[1], shareID
-        return [doc, user]
+        return {doc, user}
 
     evalUpdate = (rule, _callback) ->
         # There is probably a way to optimize here :
         # For each sharing rule, loop on map and select results...
         mapRes = shareIDInArray mapResults, rule.id
-        selectRes = existDocOrUser rule.id
+        selectResult = existDocOrUser rule.id
 
         if mapRes?
-            if selectRes[0]? || selectRes[1]?
+            # do nothing
+            if selectResult.doc? || selectResult.user?
                 console.log 'map and select ok for ' + rule.id
-                # do nothing
+                _callback null
+            # insert + match
             else
                 console.log 'map ok for ' + rule.id
-                # insert + match
+
                 # TODO : must be done in series to avoid multiple inserts/select
                 # TODO : create matchin function to simplify
                 insertResults mapRes, (err) ->
-                    if err?
-                        _callback err
+                    if err? then _callback err
                     else
                         matching mapRes, (err, acl) ->
-                            if err
-                                _callback err
+                            if err then _callback err
                             else
                                 if acl?
                                     sharingProcess acl, (err) ->
@@ -172,12 +200,21 @@ updateProcess = (id, mapResults, selectResults, callback) ->
                                 else
                                     _callback null
         else
-            if selectRes[0]? || selectRes[1]?
+            # remove id in plug + invert match
+            if selectResult.doc? || selectResult.user?
                 console.log 'select ok for ' + rule.id
-                # remove id in plug + invert match
+                deleteResults selectResult, (err, acls) ->
+                    if err then _callback err
+                    else if acls?
+                        startShares acls, (err) ->
+                                _callback err
+                    else
+                        _callback null
+
+            # do nothing
             else
                 console.log 'map and select not ok for ' + rule.id
-                # do nothing
+                _callback null
         _callback()
 
     async.eachSeries rules, evalUpdate, (err) ->
@@ -263,27 +300,26 @@ matchAfterInsert = (mapResults, callback) ->
 
 
 # Send the match command to PlugDB
-matching = (mapResult, _callback) ->
+matching = (mapResult, callback) ->
     console.log 'go match : ' + JSON.stringify mapResult
 
     if mapResult.docID?
-        matchType = plug.MATCH_USERS
+        matchType = plug.USERS
         id = mapResult.docID
     else if mapResult.userID?
-        matchType = plug.MATCH_DOCS
+        matchType = plug.DOCS
         id = mapResult.userID
     else
-        _callback null
+        callback null
 
     #if acl?
     # Add the shareID at the beginning
     # acl = Array.prototype.slice.call( acl )
     # acl.unshift mapResult.shareID
     plug.matchAll matchType, id, mapResult.shareID, (err, acl) ->
-        _callback err, acl
+        callback err, acl
 
 startShares = (acls, callback) ->
-
     async.each acls, sharingProcess, (err) ->
         callback err
 
@@ -319,8 +355,7 @@ userSharing = (shareID, user, ids, callback) ->
         # Replication exists for this user, cancel it
         if replicationID?
             removeReplication rule, replicationID, (err) ->
-                if err?
-                    callback err
+                if err? then callback err
                 else
                     shareDocs user, ids, rule, (err) ->
                         callback err
@@ -334,8 +369,7 @@ userSharing = (shareID, user, ids, callback) ->
 # Replication documents and save the replication
 shareDocs = (user, ids, rule, callback) ->
     replicateDocs user.target, ids, (err, repID) ->
-        if err?
-            callback err
+        if err? then callback err
         else
             saveReplication rule, user.userID, repID, (err) ->
                 callback err
@@ -366,8 +400,7 @@ replicateDocs = (target, ids, callback) ->
 
     couchClient.post "_replicate", repSourceToTarget, (err, res, body) ->
         #err is sometimes empty, even if it has failed
-        if err
-            callback err
+        if err? then callback err
         else if not body.ok
             console.log JSON.stringify body
             callback body
@@ -376,8 +409,7 @@ replicateDocs = (target, ids, callback) ->
             console.log JSON.stringify body
             replicationID = body._local_id
             couchTarget.post "_replicate", repTargetToSource, (err, res, body)->
-                if err
-                    callback err
+                if err? then callback err
                 else if not body.ok
                     console.log JSON.stringify body
                     callback body
@@ -392,8 +424,7 @@ replicateDocs = (target, ids, callback) ->
 updateActiveRep = (shareID, activeReplications, callback) ->
 
     db.get shareID, (err, doc) ->
-        if err
-            callback err
+        if err? then callback err
         else
             # Overwrite the activeReplication field, if it exists or not in the doc
             # Note that a merge would be more efficient in case of existence
@@ -423,8 +454,7 @@ removeReplication = (rule, replicationID, callback) ->
     # Cancel the replication for couchDB
     if rule? and replicationID?
         cancelReplication replicationID, (err) ->
-            if err?
-                callback err
+            if err? then callback err
             else
                 # There are active replications
                 if rule.activeReplications?
@@ -451,9 +481,7 @@ cancelReplication = (replicationID, callback) ->
     console.log 'cancel args ' + JSON.stringify args
 
     couchClient.post "_replicate", args, (err, res, body) ->
-        if err
-            callback err
-
+        if err? then callback err
         else
             console.log 'Cancel replication'
             # If !body.ok, the replication failed, but we consider it's not an error
@@ -481,7 +509,7 @@ getCozyAddressFromUserID = (userID, callback) ->
 # Get the current replications ids
 getActiveTasks = (client, callback) ->
     client.get "_active_tasks", (err, res, body) ->
-        if err or not body.length?
+        if err? or not body.length?
             callback err
         else
             for task in body
