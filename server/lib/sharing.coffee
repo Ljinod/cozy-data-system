@@ -23,7 +23,7 @@ module.exports.evalInsert = (doc, id, callback) ->
         async.eachSeries mapResults, insertResults, (err) ->
             return callback err if err?
 
-            console.log 'mapping results : ' + JSON.stringify mapResults
+            console.log 'mapping results insert : ' + JSON.stringify mapResults
             matchAfterInsert mapResults, (err, acls) ->
                 #acl :
                 console.log 'acls : ' + JSON.stringify acls
@@ -37,19 +37,23 @@ module.exports.evalInsert = (doc, id, callback) ->
 
 
 # Map the upated document against all the sharing rules
-module.exports.evalUpdate = (doc, id, isBinaryUpdate, callback) ->
-    # Warning : in some case, eg tasky, the doctype is not specified, whereas
-    # it should be. See more cases to decide how to handle it
-    console.log 'doc update : '  + JSON.stringify doc
-    mapDocInRules doc, id, (err, mapResults) ->
-        # mapResults : [ {docID, userID, shareID, userParams} ]
-        return callback err if err?
-
-        selectInPlug id, (err, selectResults) ->
+module.exports.evalUpdate = (id, isBinaryUpdate, callback) ->
+    # In some case, eg tasky, the doctype is not specified, whereas
+    # it should be. Thus, the whole document is retrieved from db
+    db.get id, (err, doc) ->
+        console.log 'doc update : '  + JSON.stringify doc
+        mapDocInRules doc, id, (err, mapResults) ->
+            # mapResults: [ doc: {docID, userID, shareID, userParams, binaries},
+            #              user: {docID, userID, shareID, userParams, binaries}]
             return callback err if err?
 
-            updateProcess id, mapResults, selectResults, isBinaryUpdate, (err, res) ->
-                callback err, res
+            console.log 'mapping results update : ' + JSON.stringify mapResults
+
+            selectInPlug id, (err, selectResults) ->
+                return callback err if err?
+
+                updateProcess id, mapResults, selectResults, isBinaryUpdate, (err, res) ->
+                    callback err, res
 
 # Insert the map result as a tuple in PlugDB, as a Doc and/or as a User
 # mapResult : {docID, userID, shareID, userParams}
@@ -60,7 +64,7 @@ insertResults = (mapResult, callback) ->
     async.series [
         (_callback) ->
             # There is a doc result
-            return _callback null unless mapResult.doc?
+            return _callback null unless mapResult?.doc?
 
             doc = mapResult.doc
             # The docid has already been inserted if there are binaries
@@ -73,7 +77,7 @@ insertResults = (mapResult, callback) ->
         ,
         (_callback) ->
             # There is an user result
-            return _callback null unless mapResult.user?
+            return _callback null unless mapResult?.user?
 
             user = mapResult.user
             # The userid has already been inserted if there are binaries
@@ -215,7 +219,7 @@ updateProcess = (id, mapResults, selectResults, isBinaryUpdate, callback) ->
                         return _callback err if err?
                         return _callback null unless acls?
 
-                        sharingProcess acls, (err) ->
+                        startShares [acls], (err) ->
                             _callback err
         else
             # remove id in plug + invert match
@@ -249,12 +253,12 @@ mapDocInRules = (doc, id, callback) ->
 
         # Save the result of the mapping
         saveResult = (id, shareID, userParams, binaries, isDoc) ->
-            doc = {}
-            if isDoc then doc.docID = id else doc.userID = id
-            doc.shareID = shareID
-            doc.userParams = userParams
-            doc.binaries = binaries
-            if isDoc then mapResult.doc = doc else mapResult.user = doc
+            res = {}
+            if isDoc then res.docID = id else res.userID = id
+            res.shareID = shareID
+            res.userParams = userParams
+            res.binaries = binaries
+            if isDoc then mapResult.doc = res else mapResult.user = res
 
 
         filterDoc = rule.filterDoc
@@ -271,8 +275,10 @@ mapDocInRules = (doc, id, callback) ->
             mapDoc doc, id, rule.id, filterUser, (isUserMaped) ->
                 if isUserMaped
                     console.log 'user maped !! '
+                    binIds = getbinariesIds doc
                     saveResult id, rule.id, filterUser.userParam, binIds, false
 
+                #console.log 'map result : ' + JSON.stringify mapResult
                 if not mapResult.doc? && not mapResult.user?
                     _callback null, null
                 else
@@ -337,7 +343,6 @@ matching = (mapResult, callback) ->
 
 
 
-
 startShares = (acls, callback) ->
     # acls.user are the acl for the user matching
     # acls.doc are the acl for the doc matching
@@ -385,10 +390,6 @@ sharingProcess = (share, callback) ->
         callback err
 
 
-
-
-
-
 # Cancel existing replication, create a new one, and save it
 userSharing = (shareID, user, ids, callback) ->
     console.log 'share with user : ' + JSON.stringify user
@@ -402,8 +403,8 @@ userSharing = (shareID, user, ids, callback) ->
     console.log 'replication id : ' + replicationID
     # Replication exists for this user, cancel it
     if replicationID?
-        removeReplication rule, replicationID, (err) ->
-            return callback err unless err?
+        removeReplication rule, replicationID, user.userID, (err) ->
+            return callback err if err?
 
             shareDocs user, ids, rule, (err) ->
                 callback err
@@ -500,7 +501,7 @@ saveReplication = (rule, userID, replicationID, callback) ->
         callback null
 
 # Remove the replication from RAM and DB
-removeReplication = (rule, replicationID, callback) ->
+removeReplication = (rule, replicationID, userID, callback) ->
     # Cancel the replication for couchDB
     return callback null unless rule? and replicationID?
 
@@ -509,7 +510,7 @@ removeReplication = (rule, replicationID, callback) ->
         # There are active replications
         if rule.activeReplications?
             for rep, i in rule.activeReplications
-                if rep.replicationID == replicationID
+                if rep.replicationID == replicationID && rep.userID == userID
                     rule.activeReplications.splice i, 1
                     updateActiveRep rule.id, rule.activeReplications, (err) ->
                         return callback err if err?
@@ -556,8 +557,8 @@ getCozyAddressFromUserID = (userID, callback) ->
 
 getbinariesIds= (doc) ->
     if doc.binary?
-        ids = (bin.id for bin in doc.binary)
-        console.logs 'binary ids : ' + console.log JSON.stringify ids
+        ids = (val.id for bin, val of doc.binary)
+        console.log 'binary ids : ' + JSON.stringify ids
         return ids
 
 binaryHandling = (mapRes, callback) ->
@@ -657,8 +658,8 @@ getRepID= (array, userID) ->
 shareIDInArray = (array, shareID) ->
     if array?
         for ar in array
-            return ar if ar.doc? and ar.doc.shareID == shareID
-            return ar if ar.user? and ar.user.shareID == shareID
+            return ar if ar?.doc? and ar.doc.shareID == shareID
+            return ar if ar?.user? and ar.user.shareID == shareID
     return null
 
 getRuleById = (shareID, callback) ->

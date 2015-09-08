@@ -1,6 +1,7 @@
 db = require('../helpers/db_connect_helper').db_connect()
 thumb = require '../lib/thumb'
 querystring = require 'querystring'
+sharing = require './sharing'
 log = require('printit')
     prefix: 'binary'
 
@@ -29,6 +30,8 @@ module.exports.addBinary = (doc, attachData, readStream, callback) ->
                 db.merge doc._id, binary: binList, (err) ->
                     log.error err if err?
                     cb()
+                    sharing.evalUpdate doc._id, true, (err) ->
+                        log.error err if err?
         readStream.pipe stream
 
     # Update binary list set on given doc then save file to CouchDB

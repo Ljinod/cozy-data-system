@@ -160,12 +160,6 @@ module.exports.delete = (req, res, next) ->
 # this doesn't take care of conflict (erase DB with the sent value)
 module.exports.merge = (req, res, next) ->
     console.log 'this is a merge'
-    sharing.evalUpdate req.body, req.params.id, false, (err, mapIds) ->
-        if err?
-            console.log 'Error on the mapping : ' + JSON.stringify err
-        else
-            console.log 'mapping merge ok'
-
     delete req.body._attachments # attachments management has a dedicated API
     db.merge req.params.id, req.body, (err, doc) ->
         if err
@@ -173,3 +167,8 @@ module.exports.merge = (req, res, next) ->
         else
             res.send 200, success: true
             next()
+            sharing.evalUpdate req.params.id, false, (err) ->
+                if err?
+                    console.log 'Error on eval update : ' + JSON.stringify err
+                else
+                    console.log 'eval merge ok'
