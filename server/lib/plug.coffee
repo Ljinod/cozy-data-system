@@ -88,8 +88,10 @@ init = (callback) ->
 insertDocs = (docids, shareid, userParams, callback) ->
     #The js Object needs to be converted into a java String array
     array = java.newArray('java.lang.String', docids)
-    userParams = java.newArray('java.lang.String', userParams) if userParams?
+    #userParams = java.newArray('java.lang.String', userParams) if userParams?
+    console.log 'go insert ' + JSON.stringify array + ' up : ' + JSON.stringify userParams
     plug.plugInsertDocs array, shareid, userParams, (err) ->
+        console.log 'ok? ' + JSON.stringify err
         callback err
 
 #insert userids

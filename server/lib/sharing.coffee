@@ -37,7 +37,7 @@ module.exports.evalInsert = (doc, id, callback) ->
 
 
 # Map the upated document against all the sharing rules
-module.exports.evalUpdate = (doc, id, callback) ->
+module.exports.evalUpdate = (doc, id, isBinaryUpdate, callback) ->
     # Warning : in some case, eg tasky, the doctype is not specified, whereas
     # it should be. See more cases to decide how to handle it
     console.log 'doc update : '  + JSON.stringify doc
@@ -48,18 +48,14 @@ module.exports.evalUpdate = (doc, id, callback) ->
         selectInPlug id, (err, selectResults) ->
             return callback err if err?
 
-            updateProcess id, mapResults, selectResults, (err, res) ->
+            updateProcess id, mapResults, selectResults, isBinaryUpdate, (err, res) ->
                 callback err, res
-
-        # Serial loop, to avoid parallel db access
-        ###async.eachSeries mapResults, updateResults, (err) ->
-            console.log 'mapping results : ' + JSON.stringify mapResults
-            callback err, mapResults
-            ###
 
 # Insert the map result as a tuple in PlugDB, as a Doc and/or as a User
 # mapResult : {docID, userID, shareID, userParams}
 insertResults = (mapResult, callback) ->
+
+    console.log 'insert docs'
 
     async.series [
         (_callback) ->
@@ -67,27 +63,21 @@ insertResults = (mapResult, callback) ->
             return _callback null unless mapResult.doc?
 
             doc = mapResult.doc
-            ids = [doc.docID]
-            ids.push doc.binaries if doc.binaries
+            # The docid has already been inserted if there are binaries
+            ids = if doc.binaries? then doc.binaries else [doc.docID]
 
             plug.insertDocs ids, doc.shareID, doc.userDesc, (err) ->
                 unless err? then console.log "docs " + JSON.stringify ids +
                                         " inserted in PlugDB"
                 if err? then _callback err else _callback null
-            ###else
-                plug.insertDoc doc.docID, doc.shareID, doc.userDesc, (err) ->
-                    unless err? then console.log "doc " + doc.docID +
-                                            " inserted in PlugDB"
-                    if err? then _callback err else _callback null
-            ###
         ,
         (_callback) ->
             # There is an user result
             return _callback null unless mapResult.user?
 
             user = mapResult.user
-            ids = [user.userID]
-            ids.push user.binaries if user.binaries
+            # The userid has already been inserted if there are binaries
+            ids = if user.binaries? then user.binaries else [user.userID]
 
             plug.insertUsers ids, user.shareID, user.userDesc, (err) ->
                 unless err? then console.log "users " + JSON.stringify ids +
@@ -130,7 +120,39 @@ updateResults = (mapResult, callback) ->
     (err) ->
         callback err
 
+# Delete the matched ACL and the selected doc
+deleteResults = (select, callback) ->
+    async.series [
+        (_callback) ->
+            return _callback null unless select.doc?
+            # There is a doc result
+            doc = select.doc
+            plug.deleteMatch plug.USERS, doc.idPlug, doc.shareID, (err, res) ->
+                return _callback err if err?
+                return _callback null unless res?
 
+                plug.deleteDoc doc.idPlug, (err) ->
+                    _callback err, res
+        ,
+        (_callback) ->
+            return _callback null unless select.user?
+            # There is a user result
+            user = select.user
+            plug.deleteMatch plug.DOCS, user.idPlug, \
+                                user.shareID, (err, res) ->
+                return _callback err if err?
+                return _callback null unless res?
+
+                plug.deleteDoc user.idPlug, (err) ->
+                    _callback err, res
+
+    ],
+    (err, results) ->
+        console.log 'delete results : ' + JSON.stringify results if results?
+        acls = {doc: results[0], user: results[1]}
+        callback err, acls
+
+# Select doc by its id in PlugDB
 selectInPlug = (id, callback) ->
 
     async.series [
@@ -146,19 +168,21 @@ selectInPlug = (id, callback) ->
     ],
     # results : [ [{selecDoc}], [{selectUser}] ]
     (err, results) ->
-        console.log 'tuples select : ' + JSON.stringify results if results
-        callback err, results
+        res = {doc: results[0], user: results[1]}
+        console.log 'tuples select : ' + JSON.stringify res if res?
+        callback err, res
 
 
-updateProcess = (id, mapResults, selectResults, callback) ->
+updateProcess = (id, mapResults, selectResults, isBinaryUpdate, callback) ->
 
     existDocOrUser = (shareID) ->
-        if selectResults[0]? and selectResults[0].shareID?
-            doc = selectResults[0] if selectResults[0].shareID == shareID
-            console.log 'doc : ' + JSON.stringify doc
-        if selectResults[1]? and selectResults[1].shareID?
-            user =  selectResults[1] if selectResults[1].shareID == shareID
+        if selectResults.doc?.shareID?
+            doc = selectResults.doc if selectResults.doc.shareID == shareID
+        if selectResults.user?.shareID?
+            user =  selectResults.user if selectResults.user.shareID == shareID
         return {doc, user}
+
+
 
     evalUpdate = (rule, _callback) ->
         # There is probably a way to optimize here :
@@ -172,13 +196,18 @@ updateProcess = (id, mapResults, selectResults, callback) ->
             # do nothing
             if selectResult.doc? || selectResult.user?
                 console.log 'map and select ok for ' + rule.id
-                _callback null
+
+                # Particular case for binaries
+                if isBinaryUpdate
+                    binaryHandling mapRes, (err) ->
+                        _callback err
+                else
+                    _callback null
+
             # insert + match
             else
                 console.log 'map ok for ' + rule.id
 
-                # TODO : must be done in series to avoid multiple inserts/select
-                # TODO : create matchin function to simplify
                 insertResults mapRes, (err) ->
                     return _callback err if err?
 
@@ -208,15 +237,6 @@ updateProcess = (id, mapResults, selectResults, callback) ->
     async.eachSeries rules, evalUpdate, (err) ->
         callback err
 
-#Select doc into PlugDB
-module.exports.selectDocPlug = (id, callback) ->
-    plug.selectSingleDoc id, (err, tuple) ->
-        callback err, tuple
-
-#Select user into PlugDB
-module.exports.selectUserPlug = (id, callback) ->
-    plug.selectSingleUser id, (err, tuple) ->
-        callback err, tuple
 
 # For each rule, evaluates if the document is correctly filtered/mapped
 # as a document and/or a user
@@ -307,10 +327,7 @@ matching = (mapResult, callback) ->
                 _callback err, acl
     ],
     (err, results) ->
-        acls = {}
-        acls.doc = results[0]
-        acls.user = results[1]
-
+        acls = {doc: results[0], user: results[1]}
         callback err, acls
 
     #if acl?
@@ -318,38 +335,7 @@ matching = (mapResult, callback) ->
     # acl = Array.prototype.slice.call( acl )
     # acl.unshift mapResult.shareID
 
-deleteResults = (select, callback) ->
-    async.series [
-        (_callback) ->
-            return _callback null unless select.doc?
-            # There is a doc result
-            doc = select.doc
-            plug.deleteMatch plug.USERS, doc.idPlug, doc.shareID, (err, res) ->
-                return _callback err if err?
-                return _callback null unless res?
 
-                plug.deleteDoc doc.idPlug, (err) ->
-                    _callback err, res
-        ,
-        (_callback) ->
-            return _callback null unless select.user?
-            # There is a user result
-            user = select.user
-            plug.deleteMatch plug.DOCS, user.idPlug, \
-                                user.shareID, (err, res) ->
-                return _callback err if err?
-                return _callback null unless res?
-
-                plug.deleteDoc user.idPlug, (err) ->
-                    _callback err, res
-
-    ],
-    (err, results) ->
-        console.log 'delete results : ' + JSON.stringify results if results?
-        acls = {}
-        acls.doc = results[0]
-        acls.user = results[1]
-        callback err, acls
 
 
 startShares = (acls, callback) ->
@@ -444,8 +430,7 @@ replicateDocs = (target, ids, callback) ->
 
     couchClient = request.newClient "http://localhost:5984"
     sourceURL = "http://192.168.50.4:5984/cozy"
-    targetURL = "http://pzjWbznBQPtfJ0es6cvHQKX0cGVqNfHW" +
-                ":NPjnFATLxdvzLxsFh9wzyqSYx4CjG30U@192.168.50.5:5984/cozy"
+    targetURL = "http://pzjWbznBQPtfJ0es6cvHQKX0cGVqNfHW:NPjnFATLxdvzLxsFh9wzyqSYx4CjG30U@192.168.50.5:5984/cozy"
     couchTarget = request.newClient targetURL
 
     repSourceToTarget =
@@ -575,7 +560,30 @@ getbinariesIds= (doc) ->
         console.logs 'binary ids : ' + console.log JSON.stringify ids
         return ids
 
+binaryHandling = (mapRes, callback) ->
+    # TODO : handle this case :
+    # The doc already had binaries : check previous ones in plugdb
+    # and update it : retrieve previous ids in binary.coffee
+    # beware to handle sequentials select properly
 
+    if mapRes.doc.binaries? or mapRes.user.binaries?
+        console.log 'go insert binaries'
+
+        insertResults mapRes, (err) ->
+            return callback err if err?
+
+            matching mapRes, (err, acls) ->
+                return callback err if err?
+                return callback null unless acls?
+
+                sharingProcess acls, (err) ->
+                    callback err
+
+
+    # This is not normal and probably an error in the execution order
+    else
+        console.log 'no binary in the doc'
+        callback null
 
 # Get the current replications ids
 getActiveTasks = (client, callback) ->
@@ -595,7 +603,18 @@ module.exports.createRule = (doc, callback) ->
 module.exports.deleteRule = (doc, callback) ->
 module.exports.updateRule = (doc, callback) ->
 
-# Save the sharinf rule in RAM and PlugDB
+# PlugDB access
+#Select doc into PlugDB
+module.exports.selectDocPlug = (id, callback) ->
+    plug.selectSingleDoc id, (err, tuple) ->
+        callback err, tuple
+
+#Select user into PlugDB
+module.exports.selectUserPlug = (id, callback) ->
+    plug.selectSingleUser id, (err, tuple) ->
+        callback err, tuple
+
+# Save the sharing rule in RAM and PlugDB
 saveRule = (rule, callback) ->
     id = rule._id
     name = rule.name
@@ -637,7 +656,6 @@ getRepID= (array, userID) ->
 
 shareIDInArray = (array, shareID) ->
     if array?
-        console.log 'array : ' + JSON.stringify array
         for ar in array
             return ar if ar.doc? and ar.doc.shareID == shareID
             return ar if ar.user? and ar.user.shareID == shareID
