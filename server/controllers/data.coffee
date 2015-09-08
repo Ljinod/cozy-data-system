@@ -166,7 +166,6 @@ module.exports.merge = (req, res, next) ->
         else
             console.log 'mapping merge ok'
 
-
     delete req.body._attachments # attachments management has a dedicated API
     db.merge req.params.id, req.body, (err, doc) ->
         if err

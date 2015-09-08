@@ -23,6 +23,8 @@ async = require 'async'
 # Allow to create a binary and to link it to given document.
 module.exports.add = (req, res, next) ->
 
+    console.log 'add binary for doc ' + req.doc
+
     # Parse given form to extract image blobs.
     form = new multiparty.Form
         autoFields: false
@@ -83,6 +85,9 @@ module.exports.add = (req, res, next) ->
 # GET /data/:id/binaries/:name/
 # Download a the file attached to the binary object.
 module.exports.get = (req, res, next) ->
+
+    console.log 'get binary'
+
     name = req.params.name
     binary = req.doc.binary
 
@@ -120,6 +125,8 @@ module.exports.get = (req, res, next) ->
 # DELETE /data/:id/binaries/:name
 # Remove binary object and remove link set on given document.
 module.exports.remove = (req, res, next) ->
+
+    console.log 'remove binary'
 
     name = req.params.name
     if req.doc.binary and req.doc.binary[name]
@@ -161,6 +168,9 @@ module.exports.remove = (req, res, next) ->
         next err
 
 module.exports.convert = (req, res, next) ->
+
+    console.log 'convert binary'
+
     binaries = {}
     id = req.doc.id
 

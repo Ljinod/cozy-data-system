@@ -84,21 +84,31 @@ init = (callback) ->
             callback err
 
 
-#insert docids and associated rules
-insertDocs = (ids, callback) ->
-  #The js Object needs to be converted into a java String array
-  array = java.newArray('java.lang.String', ids)
-  plug.plugInsertDocs array, (err) ->
-    callback err
-    return
-  return
+#insert docids
+insertDocs = (docids, shareid, userParams, callback) ->
+    #The js Object needs to be converted into a java String array
+    array = java.newArray('java.lang.String', docids)
+    userParams = java.newArray('java.lang.String', userParams) if userParams?
+    plug.plugInsertDocs array, shareid, userParams, (err) ->
+        callback err
 
- #insert docids and associated rules
+#insert userids
+insertUsers = (userids, shareid, userParams, callback) ->
+    #The js Object needs to be converted into a java String array
+    array = java.newArray('java.lang.String', userids)
+    userParams = java.newArray('java.lang.String', userParams) if userParams?
+    plug.plugInsertUsers array, shareid, userParams, (err) ->
+        callback err
+
+ #insert docid
 insertDoc = (docid, shareid, userParams, callback) ->
+    userParams = java.newArray('java.lang.String', userParams) if userParams?
     plug.plugInsertDoc docid, shareid, userParams, (err) ->
         callback err
- #insert docids and associated rules
+
+ #insert userid
 insertUser = (userid, shareid, userParams, callback) ->
+    userParams = java.newArray('java.lang.String', userParams) if userParams?
     plug.plugInsertUser userid, shareid, userParams, (err) ->
         callback err
 
@@ -172,10 +182,11 @@ match = (matchingType, id, shareid, callback) ->
 # Returns an acl[][] array, containing all the [userids, docids] for
 # the shareid
 deleteMatch = (matchingType, idPlug, shareid, callback) ->
-    console.log 'go delete ' + matchingType + ' on id ' + idPlug + ' share id: ' + shareid
-    plug.plugDeleteMatch matchingType, parseInt(idPlug), shareid, (err, tuples) ->
+    console.log 'go delete ' + matchingType + ' on id ' +
+                    idPlug + ' share id: ' + shareid
+    idPlug = parseInt(idPlug) # Necessary for java comprehension
+    plug.plugDeleteMatch matchingType, idPlug, shareid, (err, tuples) ->
         buildACL tuples, shareid, (acl) ->
-            console.log 'acl : ' + JSON.stringify acl
             callback err, acl
 
 
@@ -206,6 +217,7 @@ exports.bootStatus = bootStatus
 exports.init = init
 exports.insertDocs = insertDocs
 exports.insertDoc = insertDoc
+exports.insertUsers = insertUsers
 exports.insertUser = insertUser
 exports.insertShare = insertShare
 exports.deleteDoc = deleteDoc
