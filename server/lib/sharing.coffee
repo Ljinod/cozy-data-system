@@ -197,10 +197,10 @@ updateProcess = (id, mapResults, selectResults, isBinaryUpdate, callback) ->
         console.log 'select result : ' + JSON.stringify selectResult
 
         if mapRes?
-            # do nothing
+            # do nothing, except in case of binaries
             if selectResult.doc? || selectResult.user?
                 console.log 'map and select ok for ' + rule.id
-
+                console.log 'is bin update : ' + isBinaryUpdate
                 # Particular case for binaries
                 if isBinaryUpdate
                     binaryHandling mapRes, (err) ->
@@ -322,15 +322,25 @@ matching = (mapResult, callback) ->
             return _callback null unless mapResult.doc?
             doc = mapResult.doc
             matchType = plug.USERS
-            plug.matchAll matchType, doc.docID, doc.shareID, (err, acl) ->
-                _callback err, acl
+            if doc.binaries?
+                for bin in doc.binaries
+                    plug.matchAll matchType, bin, doc.shareID, (err, acl) ->
+                        _callback err, acl
+            else
+                plug.matchAll matchType, doc.docID, doc.shareID, (err, acl) ->
+                    _callback err, acl
         ,
         (_callback) ->
             return _callback null unless mapResult.user?
             user = mapResult.user
             matchType = plug.DOCS
-            plug.matchAll matchType, user.userID, user.shareID, (err, acl) ->
-                _callback err, acl
+            if doc.binaries?
+                for bin in doc.binaries
+                    plug.matchAll matchType, bin, doc.shareID, (err, acl) ->
+                        _callback err, acl
+            else
+                plug.matchAll matchType, doc.userID, doc.shareID, (err, acl) ->
+                    _callback err, acl
     ],
     (err, results) ->
         acls = {doc: results[0], user: results[1]}
@@ -369,7 +379,7 @@ startShares = (acls, callback) ->
     , (err) ->
         callback err
 
-
+# Create the sharing for each user concerned
 sharingProcess = (share, callback) ->
     console.log 'share : ' + JSON.stringify share
     return callback null unless share? and share.users?
@@ -419,6 +429,7 @@ userSharing = (shareID, user, ids, callback) ->
 shareDocs = (user, ids, rule, callback) ->
 
     replicateDocs user.target, ids, (err, repID) ->
+        console.log 'err : ' + JSON.stringify err + ' repID : ' + JSON.stringify repID
         return callback err if err?
 
         saveReplication rule, user.userID, repID, (err) ->
@@ -474,7 +485,8 @@ replicateDocs = (target, ids, callback) ->
 updateActiveRep = (shareID, activeReplications, callback) ->
 
     db.get shareID, (err, doc) ->
-        return err if callback err?
+        console.log 'err update : ' + JSON.stringify err
+        return callback err if err?
         # Overwrite the activeReplication field,
         # if it exists or not in the doc
         # Note that a merge would be more efficient in case of existence
@@ -495,12 +507,19 @@ saveReplication = (rule, userID, replicationID, callback) ->
             rule.activeReplications.push {userID, replicationID}
             # Save the new replication id in the share document
             updateActiveRep rule.id, rule.activeReplications, (err) ->
+                console.log 'callback 1'
                 callback err
         else
             rule.activeReplications = [{userID, replicationID}]
+            # Save the new replication id in the share document
             updateActiveRep rule.id, rule.activeReplications, (err) ->
+                console.log 'callback 2'
                 callback err
+
+        console.log 'update in save'
+
     else
+        console.log 'callback 3'
         callback null
 
 # Remove the replication from RAM and DB
@@ -516,12 +535,14 @@ removeReplication = (rule, replicationID, userID, callback) ->
                 console.log 'rep : ' + JSON.stringify rep
                 if rep.replicationID == replicationID && rep.userID == userID
                     rule.activeReplications.splice i, 1
+                    'update with active rep in remove'
                     updateActiveRep rule.id, rule.activeReplications, (err) ->
                         callback err if err?
             callback null
         # There is normally no replication written in DB, but check it
         # anyway to avoid ghost data
         else
+            'update without active rep in remove'
             updateActiveRep rule.id, [], (err) ->
                 callback err
 
@@ -581,7 +602,7 @@ binaryHandling = (mapRes, callback) ->
                 return callback err if err?
                 return callback null unless acls?
 
-                sharingProcess acls, (err) ->
+                startShares [acls], (err) ->
                     callback err
 
 
