@@ -232,8 +232,9 @@ selectUsersByUserID = (userid, callback) ->
 # Match the doc/user to create new ACLs
 # Returns an acl[][] array, containing all the [userids, docids] for
 # the shareid
-matchAll = (matchingType, id, shareid, callback) ->
-    params = [6, matchingType, id, shareid]
+matchAll = (matchingType, ids, shareid, callback) ->
+    array = java.newArray('java.lang.String', ids)
+    params = [6, matchingType, array, shareid]
     q.push {params}, (err, tuples) ->
         console.log 'matchAll done'
         return callback err if err?

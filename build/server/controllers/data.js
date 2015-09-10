@@ -189,13 +189,6 @@ module.exports["delete"] = function(req, res, next) {
 
 module.exports.merge = function(req, res, next) {
   console.log('this is a merge');
-  sharing.evalUpdate(req.body, req.params.id, false, function(err, mapIds) {
-    if (err != null) {
-      return console.log('Error on the mapping : ' + JSON.stringify(err));
-    } else {
-      return console.log('mapping merge ok');
-    }
-  });
   delete req.body._attachments;
   return db.merge(req.params.id, req.body, function(err, doc) {
     if (err) {
@@ -204,7 +197,14 @@ module.exports.merge = function(req, res, next) {
       res.send(200, {
         success: true
       });
-      return next();
+      next();
+      return sharing.evalUpdate(req.params.id, false, function(err) {
+        if (err != null) {
+          return console.log('Error on eval update : ' + JSON.stringify(err));
+        } else {
+          return console.log('eval merge ok');
+        }
+      });
     }
   });
 };

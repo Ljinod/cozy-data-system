@@ -317,30 +317,26 @@ matchAfterInsert = (mapResults, callback) ->
 # Send the match command to PlugDB
 matching = (mapResult, callback) ->
 
+
     async.series [
         (_callback) ->
             return _callback null unless mapResult.doc?
             doc = mapResult.doc
             matchType = plug.USERS
-            if doc.binaries?
-                for bin in doc.binaries
-                    plug.matchAll matchType, bin, doc.shareID, (err, acl) ->
-                        _callback err, acl
-            else
-                plug.matchAll matchType, doc.docID, doc.shareID, (err, acl) ->
-                    _callback err, acl
+            ids = if doc.binaries? then doc.binaries else [doc.docID]
+
+            plug.matchAll matchType, ids, doc.shareID, (err, acl) ->
+                _callback err, acl
         ,
         (_callback) ->
             return _callback null unless mapResult.user?
             user = mapResult.user
             matchType = plug.DOCS
-            if doc.binaries?
-                for bin in doc.binaries
-                    plug.matchAll matchType, bin, doc.shareID, (err, acl) ->
-                        _callback err, acl
-            else
-                plug.matchAll matchType, doc.userID, doc.shareID, (err, acl) ->
-                    _callback err, acl
+            ids = if user.binaries? then user.binaries else [user.userID]
+
+            plug.matchAll matchType, ids, user.shareID, (err, acl) ->
+                _callback err, acl
+
     ],
     (err, results) ->
         acls = {doc: results[0], user: results[1]}
@@ -414,22 +410,24 @@ userSharing = (shareID, user, ids, callback) ->
     console.log 'replication id : ' + replicationID
     # Replication exists for this user, cancel it
     if replicationID?
-        removeReplication rule, replicationID, user.userID, (err) ->
+        cancelReplication replicationID, (err) ->
             return callback err if err?
+        #removeReplication rule, replicationID, user.userID, (err) ->
+        #    return callback err if err?
 
-            shareDocs user, ids, rule, (err) ->
-                callback err
+    shareDocs user, ids, rule, (err) ->
+        callback err
     # No active replication
-    else
-        shareDocs user, ids, rule, (err) ->
-            callback err
+    #else
+    #    shareDocs user, ids, rule, (err) ->
+    #        callback err
 
 
 # Replication documents and save the replication
 shareDocs = (user, ids, rule, callback) ->
 
     replicateDocs user.target, ids, (err, repID) ->
-        console.log 'err : ' + JSON.stringify err + ' repID : ' + JSON.stringify repID
+        #console.log 'err : ' + JSON.stringify err + ' repID : ' + JSON.stringify repID
         return callback err if err?
 
         saveReplication rule, user.userID, repID, (err) ->
@@ -485,7 +483,6 @@ replicateDocs = (target, ids, callback) ->
 updateActiveRep = (shareID, activeReplications, callback) ->
 
     db.get shareID, (err, doc) ->
-        console.log 'err update : ' + JSON.stringify err
         return callback err if err?
         # Overwrite the activeReplication field,
         # if it exists or not in the doc
@@ -494,15 +491,35 @@ updateActiveRep = (shareID, activeReplications, callback) ->
         doc.activeReplications = activeReplications
         console.log 'active rep : ' + JSON.stringify activeReplications
         db.save shareID, doc, (err, res) ->
-            console.log 'res save : ' + JSON.stringify res
             callback err
 
 # Write the replication id in the sharing doc and save in RAM
 saveReplication = (rule, userID, replicationID, callback) ->
+    return callback null unless rule? and replicationID?
 
     console.log 'save replication ' + replicationID
+    if rule.activeReplications?.length > 0
 
-    if rule? and replicationID?
+        async.each rule.activeReplications, (rep, _callback) ->
+            console.log 'rep : ' + JSON.stringify rep
+            # Remove from array when the userID matches
+            if rep?.userID ?= userID
+                rep.replicationID = replicationID
+            _callback null
+                #i = rule.activeReplications.indexOf rep
+                #rule.activeReplications.splice i, 1 if i > -1
+
+        , (err) ->
+            updateActiveRep rule.id, rule.activeReplications, (err) ->
+                callback err
+    else
+        rule.activeReplications = [{userID, replicationID}]
+        console.log 'active rep : ' + JSON.stringify rule.activeReplications
+        updateActiveRep rule.id, rule.activeReplications, (err) ->
+            callback err
+
+
+        ###
         if rule.activeReplications?
             rule.activeReplications.push {userID, replicationID}
             # Save the new replication id in the share document
@@ -516,11 +533,10 @@ saveReplication = (rule, userID, replicationID, callback) ->
                 console.log 'callback 2'
                 callback err
 
-        console.log 'update in save'
-
     else
         console.log 'callback 3'
         callback null
+        ###
 
 # Remove the replication from RAM and DB
 removeReplication = (rule, replicationID, userID, callback) ->
@@ -529,20 +545,24 @@ removeReplication = (rule, replicationID, userID, callback) ->
 
     cancelReplication replicationID, (err) ->
         return callback err if err?
+
         # There are active replications
         if rule.activeReplications?
-            for rep, i in rule.activeReplications
+            async.each rule.activeReplications, (rep, _callback) ->
                 console.log 'rep : ' + JSON.stringify rep
-                if rep.replicationID == replicationID && rep.userID == userID
-                    rule.activeReplications.splice i, 1
-                    'update with active rep in remove'
+                if rep?.userID ?= userID
+                    i = rule.activeReplications.indexOf rep
+                    rule.activeReplications.splice i, 1 if i > -1
                     updateActiveRep rule.id, rule.activeReplications, (err) ->
-                        callback err if err?
-            callback null
+                        _callback err
+                else
+                    _callback null
+            , (err) ->
+                callback err
         # There is normally no replication written in DB, but check it
         # anyway to avoid ghost data
         else
-            'update without active rep in remove'
+            console.log 'update without active rep in remove'
             updateActiveRep rule.id, [], (err) ->
                 callback err
 

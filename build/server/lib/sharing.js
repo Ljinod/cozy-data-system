@@ -21,7 +21,7 @@ module.exports.evalInsert = function(doc, id, callback) {
       if (err != null) {
         return callback(err);
       }
-      console.log('mapping results : ' + JSON.stringify(mapResults));
+      console.log('mapping results insert : ' + JSON.stringify(mapResults));
       return matchAfterInsert(mapResults, function(err, acls) {
         console.log('acls : ' + JSON.stringify(acls));
         if (err != null) {
@@ -38,28 +38,32 @@ module.exports.evalInsert = function(doc, id, callback) {
   });
 };
 
-module.exports.evalUpdate = function(doc, id, isBinaryUpdate, callback) {
-  console.log('doc update : ' + JSON.stringify(doc));
-  return mapDocInRules(doc, id, function(err, mapResults) {
-    if (err != null) {
-      return callback(err);
-    }
-    return selectInPlug(id, function(err, selectResults) {
+module.exports.evalUpdate = function(id, isBinaryUpdate, callback) {
+  return db.get(id, function(err, doc) {
+    console.log('doc update : ' + JSON.stringify(doc));
+    return mapDocInRules(doc, id, function(err, mapResults) {
       if (err != null) {
         return callback(err);
       }
-      return updateProcess(id, mapResults, selectResults, isBinaryUpdate, function(err, res) {
-        return callback(err, res);
+      console.log('mapping results update : ' + JSON.stringify(mapResults));
+      return selectInPlug(id, function(err, selectResults) {
+        if (err != null) {
+          return callback(err);
+        }
+        return updateProcess(id, mapResults, selectResults, isBinaryUpdate, function(err, res) {
+          return callback(err, res);
+        });
       });
     });
   });
 };
 
 insertResults = function(mapResult, callback) {
+  console.log('go insert docs');
   return async.series([
     function(_callback) {
       var doc, ids;
-      if (mapResult.doc == null) {
+      if ((mapResult != null ? mapResult.doc : void 0) == null) {
         return _callback(null);
       }
       doc = mapResult.doc;
@@ -76,7 +80,7 @@ insertResults = function(mapResult, callback) {
       });
     }, function(_callback) {
       var ids, user;
-      if (mapResult.user == null) {
+      if ((mapResult != null ? mapResult.user : void 0) == null) {
         return _callback(null);
       }
       user = mapResult.user;
@@ -243,6 +247,7 @@ updateProcess = function(id, mapResults, selectResults, isBinaryUpdate, callback
     if (mapRes != null) {
       if ((selectResult.doc != null) || (selectResult.user != null)) {
         console.log('map and select ok for ' + rule.id);
+        console.log('is bin update : ' + isBinaryUpdate);
         if (isBinaryUpdate) {
           binaryHandling(mapRes, function(err) {
             return _callback(err);
@@ -263,7 +268,7 @@ updateProcess = function(id, mapResults, selectResults, isBinaryUpdate, callback
             if (acls == null) {
               return _callback(null);
             }
-            return sharingProcess(acls, function(err) {
+            return startShares([acls], function(err) {
               return _callback(err);
             });
           });
@@ -301,19 +306,20 @@ mapDocInRules = function(doc, id, callback) {
     var filterDoc, filterUser, mapResult, saveResult;
     mapResult = {};
     saveResult = function(id, shareID, userParams, binaries, isDoc) {
-      doc = {};
+      var res;
+      res = {};
       if (isDoc) {
-        doc.docID = id;
+        res.docID = id;
       } else {
-        doc.userID = id;
+        res.userID = id;
       }
-      doc.shareID = shareID;
-      doc.userParams = userParams;
-      doc.binaries = binaries;
+      res.shareID = shareID;
+      res.userParams = userParams;
+      res.binaries = binaries;
       if (isDoc) {
-        return mapResult.doc = doc;
+        return mapResult.doc = res;
       } else {
-        return mapResult.user = doc;
+        return mapResult.user = res;
       }
     };
     filterDoc = rule.filterDoc;
@@ -328,6 +334,7 @@ mapDocInRules = function(doc, id, callback) {
       return mapDoc(doc, id, rule.id, filterUser, function(isUserMaped) {
         if (isUserMaped) {
           console.log('user maped !! ');
+          binIds = getbinariesIds(doc);
           saveResult(id, rule.id, filterUser.userParam, binIds, false);
         }
         if ((mapResult.doc == null) && (mapResult.user == null)) {
@@ -372,25 +379,49 @@ matchAfterInsert = function(mapResults, callback) {
 matching = function(mapResult, callback) {
   return async.series([
     function(_callback) {
-      var doc, matchType;
+      var bin, doc, j, len, matchType, ref, results1;
       if (mapResult.doc == null) {
         return _callback(null);
       }
       doc = mapResult.doc;
       matchType = plug.USERS;
-      return plug.matchAll(matchType, doc.docID, doc.shareID, function(err, acl) {
-        return _callback(err, acl);
-      });
+      if (doc.binaries != null) {
+        ref = doc.binaries;
+        results1 = [];
+        for (j = 0, len = ref.length; j < len; j++) {
+          bin = ref[j];
+          results1.push(plug.matchAll(matchType, bin, doc.shareID, function(err, acl) {
+            return _callback(err, acl);
+          }));
+        }
+        return results1;
+      } else {
+        return plug.matchAll(matchType, doc.docID, doc.shareID, function(err, acl) {
+          return _callback(err, acl);
+        });
+      }
     }, function(_callback) {
-      var matchType, user;
+      var bin, j, len, matchType, ref, results1, user;
       if (mapResult.user == null) {
         return _callback(null);
       }
       user = mapResult.user;
       matchType = plug.DOCS;
-      return plug.matchAll(matchType, user.userID, user.shareID, function(err, acl) {
-        return _callback(err, acl);
-      });
+      if (user.binaries != null) {
+        ref = user.binaries;
+        results1 = [];
+        for (j = 0, len = ref.length; j < len; j++) {
+          bin = ref[j];
+          results1.push(plug.matchAll(matchType, bin, user.shareID, function(err, acl) {
+            return _callback(err, acl);
+          }));
+        }
+        return results1;
+      } else {
+        return plug.matchAll(matchType, user.userID, user.shareID, function(err, acl) {
+          return _callback(err, acl);
+        });
+      }
     }
   ], function(err, results) {
     var acls;
@@ -419,7 +450,7 @@ startShares = function(acls, callback) {
         });
       }, function(_cb) {
         if (acl.user == null) {
-          return _callback(null);
+          return _cb(null);
         }
         return sharingProcess(acl.user, function(err) {
           console.log('cb parallel user');
@@ -442,12 +473,9 @@ sharingProcess = function(share, callback) {
   return async.each(share.users, function(user, _callback) {
     return getCozyAddressFromUserID(user.userID, function(err, url) {
       user.target = url;
+      console.log('go user sharing for ' + user.userID);
       return userSharing(share.shareID, user, share.docIDs, function(err) {
-        if (err != null) {
-          return _callback(err);
-        } else {
-          return _callback(null);
-        }
+        return _callback(err);
       });
     });
   }, function(err) {
@@ -466,8 +494,8 @@ userSharing = function(shareID, user, ids, callback) {
   replicationID = getRepID(rule.activeReplications, user.userID);
   console.log('replication id : ' + replicationID);
   if (replicationID != null) {
-    return removeReplication(rule, replicationID, function(err) {
-      if (err == null) {
+    return removeReplication(rule, replicationID, user.userID, function(err) {
+      if (err != null) {
         return callback(err);
       }
       return shareDocs(user, ids, rule, function(err) {
@@ -540,11 +568,13 @@ replicateDocs = function(target, ids, callback) {
 
 updateActiveRep = function(shareID, activeReplications, callback) {
   return db.get(shareID, function(err, doc) {
-    if (!callback(err != null)) {
-      return err;
+    if (err != null) {
+      return callback(err);
     }
     doc.activeReplications = activeReplications;
+    console.log('active rep : ' + JSON.stringify(activeReplications));
     return db.save(shareID, doc, function(err, res) {
+      console.log('res save : ' + JSON.stringify(res));
       return callback(err);
     });
   });
@@ -559,6 +589,7 @@ saveReplication = function(rule, userID, replicationID, callback) {
         replicationID: replicationID
       });
       return updateActiveRep(rule.id, rule.activeReplications, function(err) {
+        console.log('callback 1');
         return callback(err);
       });
     } else {
@@ -569,40 +600,41 @@ saveReplication = function(rule, userID, replicationID, callback) {
         }
       ];
       return updateActiveRep(rule.id, rule.activeReplications, function(err) {
+        console.log('callback 2');
         return callback(err);
       });
     }
   } else {
+    console.log('callback 3');
     return callback(null);
   }
 };
 
-removeReplication = function(rule, replicationID, callback) {
+removeReplication = function(rule, replicationID, userID, callback) {
   if (!((rule != null) && (replicationID != null))) {
     return callback(null);
   }
   return cancelReplication(replicationID, function(err) {
-    var i, j, len, ref, rep, results1;
+    var i, j, len, ref, rep;
     if (err != null) {
       return callback(err);
     }
     if (rule.activeReplications != null) {
       ref = rule.activeReplications;
-      results1 = [];
       for (i = j = 0, len = ref.length; j < len; i = ++j) {
         rep = ref[i];
-        if (rep.replicationID === replicationID) {
+        console.log('rep : ' + JSON.stringify(rep));
+        if (rep != null ? rep.replicationID != null ? rep.replicationID : rep.replicationID = replicationID && rep.userID === userID : void 0) {
           rule.activeReplications.splice(i, 1);
+          console.log('update with active rep in remove');
           updateActiveRep(rule.id, rule.activeReplications, function(err) {
-            if (err != null) {
-              return callback(err);
-            }
+            return callback(err);
           });
         }
-        results1.push(callback(null));
       }
-      return results1;
+      return callback(null);
     } else {
+      console.log('update without active rep in remove');
       return updateActiveRep(rule.id, [], function(err) {
         return callback(err);
       });
@@ -647,19 +679,19 @@ getCozyAddressFromUserID = function(userID, callback) {
 };
 
 getbinariesIds = function(doc) {
-  var bin, ids;
+  var bin, ids, val;
   if (doc.binary != null) {
     ids = (function() {
-      var j, len, ref, results1;
+      var ref, results1;
       ref = doc.binary;
       results1 = [];
-      for (j = 0, len = ref.length; j < len; j++) {
-        bin = ref[j];
-        results1.push(bin.id);
+      for (bin in ref) {
+        val = ref[bin];
+        results1.push(val.id);
       }
       return results1;
     })();
-    console.logs('binary ids : ' + console.log(JSON.stringify(ids)));
+    console.log('binary ids : ' + JSON.stringify(ids));
     return ids;
   }
 };
@@ -678,7 +710,7 @@ binaryHandling = function(mapRes, callback) {
         if (acls == null) {
           return callback(null);
         }
-        return sharingProcess(acls, function(err) {
+        return startShares([acls], function(err) {
           return callback(err);
         });
       });
@@ -799,10 +831,10 @@ shareIDInArray = function(array, shareID) {
   if (array != null) {
     for (j = 0, len = array.length; j < len; j++) {
       ar = array[j];
-      if ((ar.doc != null) && ar.doc.shareID === shareID) {
+      if (((ar != null ? ar.doc : void 0) != null) && ar.doc.shareID === shareID) {
         return ar;
       }
-      if ((ar.user != null) && ar.user.shareID === shareID) {
+      if (((ar != null ? ar.user : void 0) != null) && ar.user.shareID === shareID) {
         return ar;
       }
     }
