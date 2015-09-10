@@ -59,7 +59,7 @@ module.exports.evalUpdate = (id, isBinaryUpdate, callback) ->
 # mapResult : {docID, userID, shareID, userParams}
 insertResults = (mapResult, callback) ->
 
-    console.log 'insert docs'
+    console.log 'go insert docs'
 
     async.series [
         (_callback) ->
@@ -360,7 +360,7 @@ startShares = (acls, callback) ->
                     _cb err
             ,
             (_cb) ->
-                return _callback null unless acl.user?
+                return _cb null unless acl.user?
                 sharingProcess acl.user, (err) ->
                     console.log 'cb parallel user'
                     _cb err
@@ -382,8 +382,9 @@ sharingProcess = (share, callback) ->
             user.target = url
 
             # Start the full sharing process for one user
+            console.log 'go user sharing for ' + user.userID
             userSharing share.shareID, user, share.docIDs, (err) ->
-                if err? then _callback err else _callback null
+                _callback err
 
     , (err) ->
         console.log 'callback sharing process'
@@ -473,13 +474,15 @@ replicateDocs = (target, ids, callback) ->
 updateActiveRep = (shareID, activeReplications, callback) ->
 
     db.get shareID, (err, doc) ->
-        return err unless callback err?
+        return err if callback err?
         # Overwrite the activeReplication field,
         # if it exists or not in the doc
         # Note that a merge would be more efficient in case of existence
         # but less easy to deal with
         doc.activeReplications = activeReplications
+        console.log 'active rep : ' + JSON.stringify activeReplications
         db.save shareID, doc, (err, res) ->
+            console.log 'res save : ' + JSON.stringify res
             callback err
 
 # Write the replication id in the sharing doc and save in RAM
@@ -510,11 +513,12 @@ removeReplication = (rule, replicationID, userID, callback) ->
         # There are active replications
         if rule.activeReplications?
             for rep, i in rule.activeReplications
+                console.log 'rep : ' + JSON.stringify rep
                 if rep.replicationID == replicationID && rep.userID == userID
                     rule.activeReplications.splice i, 1
                     updateActiveRep rule.id, rule.activeReplications, (err) ->
-                        return callback err if err?
-                callback null
+                        callback err if err?
+            callback null
         # There is normally no replication written in DB, but check it
         # anyway to avoid ghost data
         else

@@ -1,4 +1,5 @@
 java = require 'java'
+async = require 'async'
 jdbcJar = './plug/plug_api.jar'
 java.classpath.push jdbcJar
 plug = java.newInstanceSync 'org.cozy.plug.Plug'
@@ -14,6 +15,7 @@ isInit = ->
 bootStatus = ->
     return BOOT_STATUS
 
+# Build functions to convert tupes into objects
 
 buildSelect = (table, tuples, callback) ->
     if tuples?
@@ -65,7 +67,36 @@ buildACL = (tuples, shareid, callback) ->
     else
         callback null
 
-#initialize PlugDB
+# Create a queue object with concurrency 1
+# This is mandatory to deal correctly with PlugDB
+q = async.queue (Plug, callback) ->
+    p = Plug.params
+    console.log 'params : ' + JSON.stringify p
+
+    if p[0] is 0 then plug.plugInsertDocs p[1], p[2], p[3], (err) ->
+        callback err
+    else if p[0] is 1 then plug.plugInsertUsers p[1], p[2], p[3], (err) ->
+        callback err
+    else if p[0] is 2 then plug.plugInsertDoc p[1], p[2], p[3], (err) ->
+        callback err
+    else if p[0] is 3 then plug.plugInsertUser p[1], p[2], p[3], (err) ->
+        callback err
+    else if p[0] is 4 then plug.plugSelectDocsByDocID p[1], (err, tuples) ->
+        callback err, tuples
+    else if p[0] is 5 then plug.plugSelectUsersByUserID p[1], (err, tuples) ->
+        callback err, tuples
+    else if p[0] is 6 then plug.plugMatchAll p[1], p[2], p[3], (err, tuples) ->
+        callback err, tuples
+    else if p[0] is 7 then plug.plugDeleteMatch p[1], p[2], p[3], (err) ->
+        callback err, tuples
+    else
+        callback()
+, 1
+
+
+# PlugDB API
+
+#initialize DB
 init = (callback) ->
     # Setup the timeout handler
     timeoutProtect = setTimeout((->
@@ -89,28 +120,44 @@ insertDocs = (docids, shareid, userParams, callback) ->
     #The js Object needs to be converted into a java String array
     array = java.newArray('java.lang.String', docids)
     userParams = java.newArray('java.lang.String', userParams) if userParams?
-    plug.plugInsertDocs array, shareid, userParams, (err) ->
-        callback err
+    params = [0, array, shareid, userParams]
+    q.push {params}, (err) ->
+        console.log 'insert docs done'
+        return callback err
+
+
+    #plug.plugInsertDocs array, shareid, userParams, (err) ->
+    #    callback err
 
 #insert userids
 insertUsers = (userids, shareid, userParams, callback) ->
     #The js Object needs to be converted into a java String array
     array = java.newArray('java.lang.String', userids)
     userParams = java.newArray('java.lang.String', userParams) if userParams?
-    plug.plugInsertUsers array, shareid, userParams, (err) ->
+    params = [1, array, shareid, userParams]
+    q.push {params}, (err) ->
+        console.log 'insert users done'
         callback err
+    #plug.plugInsertUsers array, shareid, userParams, (err) ->
+    #    callback err
 
  #insert docid
 insertDoc = (docid, shareid, userParams, callback) ->
     userParams = java.newArray('java.lang.String', userParams) if userParams?
-    plug.plugInsertDoc docid, shareid, userParams, (err) ->
+    params = [2, docid, shareid, userParams]
+    q.push {params}, (err) ->
+        console.log 'insert doc done'
         callback err
 
- #insert userid
 insertUser = (userid, shareid, userParams, callback) ->
     userParams = java.newArray('java.lang.String', userParams) if userParams?
-    plug.plugInsertUser userid, shareid, userParams, (err) ->
+    params = [3, userid, shareid, userParams]
+    q.push {params}, (err) ->
+        console.log 'insert user done'
         callback err
+
+    #plug.plugInsertUser userid, shareid, userParams, (err) ->
+    #    callback err
 
 #insert sharing rule
 insertShare = (shareid, description, callback) ->
@@ -149,28 +196,55 @@ selectUsers = (callback) ->
 # Select star on docs where docID = ?
 # Returns an acl[][] array
 selectDocsByDocID = (docid, callback) ->
-    plug.plugSelectDocsByDocID docid, (err, tuples) ->
+    params = [4, docid]
+    q.push {params}, (err, tuples) ->
+        console.log 'selectDocsByDocID done'
+        return callback err if err?
+
+        buildSelect DOCS, tuples, (result) ->
+            callback null, result
+
+    ###plug.plugSelectDocsByDocID docid, (err, tuples) ->
         if err? then callback err
         else
             buildSelect DOCS, tuples, (result) ->
                 callback null, result
+    ###
 
 # Select star on users where userID = ?
 # Returns an acl[][] array
 selectUsersByUserID = (userid, callback) ->
-    plug.plugSelectUsersByUserID userid, (err, tuples) ->
+    params = [5, userid]
+    q.push {params}, (err, tuples) ->
+        console.log 'selectUsersByUserID done'
+        return callback err if err?
+
+        buildSelect USERS, tuples, (result) ->
+            callback null, result
+
+    ###plug.plugSelectUsersByUserID userid, (err, tuples) ->
         if err? then callback err
         else
             buildSelect USERS, tuples, (result) ->
                 callback null, result
+    ###
 
 # Match the doc/user to create new ACLs
 # Returns an acl[][] array, containing all the [userids, docids] for
 # the shareid
 matchAll = (matchingType, id, shareid, callback) ->
+    params = [6, matchingType, id, shareid]
+    q.push {params}, (err, tuples) ->
+        console.log 'matchAll done'
+        return callback err if err?
+
+        buildACL tuples, shareid, (acl) ->
+            return callback err, acl
+    ###
     plug.plugMatchAll matchingType, id, shareid, (err, tuples) ->
         buildACL tuples, shareid, (acl) ->
             callback err, acl
+    ###
 
 # Match the doc/user to create new ACLs
 # Returns an acl[][] array, containing the inserted [userids, docids]
@@ -182,13 +256,19 @@ match = (matchingType, id, shareid, callback) ->
 # Returns an acl[][] array, containing all the [userids, docids] for
 # the shareid
 deleteMatch = (matchingType, idPlug, shareid, callback) ->
-    console.log 'go delete ' + matchingType + ' on id ' +
-                    idPlug + ' share id: ' + shareid
-    idPlug = parseInt(idPlug) # Necessary for java comprehension
+    params = [7, matchingType, idPlug, shareid]
+    q.push {params}, (err, tuples) ->
+        console.log 'deleteMatch done'
+        return callback err if err?
+
+        buildACL tuples, shareid, (acl) ->
+            callback err, acl
+    ###
+    idPlug = parseInt(idPlug) # Necessary for java
     plug.plugDeleteMatch matchingType, idPlug, shareid, (err, tuples) ->
         buildACL tuples, shareid, (acl) ->
             callback err, acl
-
+    ###
 
 
 #close the connection and save the data on flash
