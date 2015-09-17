@@ -71,7 +71,7 @@ buildACL = (tuples, shareid, callback) ->
 # This is mandatory to deal correctly with PlugDB
 q = async.queue (Plug, callback) ->
     p = Plug.params
-    console.log 'params : ' + JSON.stringify p
+    #console.log 'params : ' + JSON.stringify p
 
     if p[0] is 0 then plug.plugInsertDocs p[1], p[2], p[3], (err) ->
         callback err
@@ -122,8 +122,7 @@ insertDocs = (docids, shareid, userParams, callback) ->
     userParams = java.newArray('java.lang.String', userParams) if userParams?
     params = [0, array, shareid, userParams]
     q.push {params}, (err) ->
-        console.log 'insert docs done'
-        return callback err
+        callback err
 
 
     #plug.plugInsertDocs array, shareid, userParams, (err) ->
@@ -136,7 +135,6 @@ insertUsers = (userids, shareid, userParams, callback) ->
     userParams = java.newArray('java.lang.String', userParams) if userParams?
     params = [1, array, shareid, userParams]
     q.push {params}, (err) ->
-        console.log 'insert users done'
         callback err
     #plug.plugInsertUsers array, shareid, userParams, (err) ->
     #    callback err
@@ -146,14 +144,12 @@ insertDoc = (docid, shareid, userParams, callback) ->
     userParams = java.newArray('java.lang.String', userParams) if userParams?
     params = [2, docid, shareid, userParams]
     q.push {params}, (err) ->
-        console.log 'insert doc done'
         callback err
 
 insertUser = (userid, shareid, userParams, callback) ->
     userParams = java.newArray('java.lang.String', userParams) if userParams?
     params = [3, userid, shareid, userParams]
     q.push {params}, (err) ->
-        console.log 'insert user done'
         callback err
 
     #plug.plugInsertUser userid, shareid, userParams, (err) ->
@@ -198,7 +194,6 @@ selectUsers = (callback) ->
 selectDocsByDocID = (docid, callback) ->
     params = [4, docid]
     q.push {params}, (err, tuples) ->
-        console.log 'selectDocsByDocID done'
         return callback err if err?
 
         buildSelect DOCS, tuples, (result) ->
@@ -216,7 +211,6 @@ selectDocsByDocID = (docid, callback) ->
 selectUsersByUserID = (userid, callback) ->
     params = [5, userid]
     q.push {params}, (err, tuples) ->
-        console.log 'selectUsersByUserID done'
         return callback err if err?
 
         buildSelect USERS, tuples, (result) ->
@@ -236,7 +230,6 @@ matchAll = (matchingType, ids, shareid, callback) ->
     array = java.newArray('java.lang.String', ids)
     params = [6, matchingType, array, shareid]
     q.push {params}, (err, tuples) ->
-        console.log 'matchAll done'
         return callback err if err?
 
         buildACL tuples, shareid, (acl) ->
@@ -259,7 +252,6 @@ match = (matchingType, id, shareid, callback) ->
 deleteMatch = (matchingType, idPlug, shareid, callback) ->
     params = [7, matchingType, idPlug, shareid]
     q.push {params}, (err, tuples) ->
-        console.log 'deleteMatch done'
         return callback err if err?
 
         buildACL tuples, shareid, (acl) ->
