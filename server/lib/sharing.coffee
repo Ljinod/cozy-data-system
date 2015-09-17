@@ -173,7 +173,7 @@ selectInPlug = (id, callback) ->
     # results : [ [{selecDoc}], [{selectUser}] ]
     (err, results) ->
         res = {doc: results[0], user: results[1]}
-        console.log 'tuples select : ' + JSON.stringify res if res?
+        #console.log 'tuples select : ' + JSON.stringify res if res?
         callback err, res
 
 
@@ -194,13 +194,11 @@ updateProcess = (id, mapResults, selectResults, isBinaryUpdate, callback) ->
         mapRes = shareIDInArray mapResults, rule.id
         selectResult = existDocOrUser rule.id
         console.log 'map res : ' + JSON.stringify mapRes
-        console.log 'select result : ' + JSON.stringify selectResult
 
         if mapRes?
             # do nothing, except in case of binaries
             if selectResult.doc? || selectResult.user?
                 console.log 'map and select ok for ' + rule.id
-                console.log 'is bin update : ' + isBinaryUpdate
                 # Particular case for binaries
                 if isBinaryUpdate
                     binaryHandling mapRes, (err) ->
@@ -234,7 +232,7 @@ updateProcess = (id, mapResults, selectResults, isBinaryUpdate, callback) ->
 
             # do nothing
             else
-                console.log 'map and select not ok for ' + rule.id
+                #console.log 'map and select not ok for ' + rule.id
                 _callback null
         _callback()
 
@@ -353,7 +351,7 @@ startShares = (acls, callback) ->
     # acls.user are the acl for the user matching
     # acls.doc are the acl for the doc matching
 
-    console.log 'acls share : ' + JSON.stringify acls
+    #console.log 'acls share : ' + JSON.stringify acls
 
     return callback null unless acls? and acls.length > 0
 
@@ -362,13 +360,11 @@ startShares = (acls, callback) ->
             (_cb) ->
                 return _cb null unless acl.doc?
                 sharingProcess acl.doc, (err) ->
-                    console.log 'cb parallel doc'
                     _cb err
             ,
             (_cb) ->
                 return _cb null unless acl.user?
                 sharingProcess acl.user, (err) ->
-                    console.log 'cb parallel user'
                     _cb err
         ], (err) ->
             _callback err
@@ -388,12 +384,10 @@ sharingProcess = (share, callback) ->
             user.target = url
 
             # Start the full sharing process for one user
-            console.log 'go user sharing for ' + user.userID
             userSharing share.shareID, user, share.docIDs, (err) ->
                 _callback err
 
     , (err) ->
-        console.log 'callback sharing process'
         callback err
 
 
@@ -426,13 +420,24 @@ userSharing = (shareID, user, ids, callback) ->
 # Replication documents and save the replication
 shareDocs = (user, ids, rule, callback) ->
 
+
+    notifyTarget user, rule, (err) ->
+
+
+    ###
+    Ask the target first
     replicateDocs user.target, ids, (err, repID) ->
         #console.log 'err : ' + JSON.stringify err + ' repID : ' + JSON.stringify repID
         return callback err if err?
 
         saveReplication rule, user.userID, repID, (err) ->
             callback err
+    ###
 
+notifyTarget = (user, rule, callback) ->
+    remote = request.newClient "https://192.168.50.5"
+    remote.post "sharing/request", request: rule, (err, res, body) ->
+        console.log 'res : ' + JSON.stringify res
 
 # Share the ids to the specifiedtarget
 replicateDocs = (target, ids, callback) ->
@@ -497,11 +502,10 @@ updateActiveRep = (shareID, activeReplications, callback) ->
 saveReplication = (rule, userID, replicationID, callback) ->
     return callback null unless rule? and replicationID?
 
-    console.log 'save replication ' + replicationID
+    #console.log 'save replication ' + replicationID
     if rule.activeReplications?.length > 0
 
         async.each rule.activeReplications, (rep, _callback) ->
-            console.log 'rep : ' + JSON.stringify rep
             # Remove from array when the userID matches
             if rep?.userID ?= userID
                 rep.replicationID = replicationID
@@ -514,30 +518,11 @@ saveReplication = (rule, userID, replicationID, callback) ->
                 callback err
     else
         rule.activeReplications = [{userID, replicationID}]
-        console.log 'active rep : ' + JSON.stringify rule.activeReplications
         updateActiveRep rule.id, rule.activeReplications, (err) ->
             callback err
 
 
-        ###
-        if rule.activeReplications?
-            rule.activeReplications.push {userID, replicationID}
-            # Save the new replication id in the share document
-            updateActiveRep rule.id, rule.activeReplications, (err) ->
-                console.log 'callback 1'
-                callback err
-        else
-            rule.activeReplications = [{userID, replicationID}]
-            # Save the new replication id in the share document
-            updateActiveRep rule.id, rule.activeReplications, (err) ->
-                console.log 'callback 2'
-                callback err
-
-    else
-        console.log 'callback 3'
-        callback null
-        ###
-
+# TODO : remove this : Deprecated
 # Remove the replication from RAM and DB
 removeReplication = (rule, replicationID, userID, callback) ->
     # Cancel the replication for couchDB
@@ -549,7 +534,6 @@ removeReplication = (rule, replicationID, userID, callback) ->
         # There are active replications
         if rule.activeReplications?
             async.each rule.activeReplications, (rep, _callback) ->
-                console.log 'rep : ' + JSON.stringify rep
                 if rep?.userID ?= userID
                     i = rule.activeReplications.indexOf rep
                     rule.activeReplications.splice i, 1 if i > -1
@@ -562,7 +546,6 @@ removeReplication = (rule, replicationID, userID, callback) ->
         # There is normally no replication written in DB, but check it
         # anyway to avoid ghost data
         else
-            console.log 'update without active rep in remove'
             updateActiveRep rule.id, [], (err) ->
                 callback err
 
@@ -603,7 +586,7 @@ getCozyAddressFromUserID = (userID, callback) ->
 getbinariesIds= (doc) ->
     if doc.binary?
         ids = (val.id for bin, val of doc.binary)
-        console.log 'binary ids : ' + JSON.stringify ids
+        #console.log 'binary ids : ' + JSON.stringify ids
         return ids
 
 binaryHandling = (mapRes, callback) ->
