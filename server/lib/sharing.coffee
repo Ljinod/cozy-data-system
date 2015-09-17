@@ -7,6 +7,9 @@ request = require 'request-json'
 # Avoid to request CouchDB for each document
 rules = []
 
+# Temporary : keep in memory the ids for the sharing
+bufferIds = []
+
 
 # Map the inserted document against all the sharing rules
 # If one or several mapping are trigerred, the result {id, shareID, userParams}
@@ -406,37 +409,62 @@ userSharing = (shareID, user, ids, callback) ->
     if replicationID?
         cancelReplication replicationID, (err) ->
             return callback err if err?
-        #removeReplication rule, replicationID, user.userID, (err) ->
-        #    return callback err if err?
-
-    shareDocs user, ids, rule, (err) ->
-        callback err
-    # No active replication
-    #else
-    #    shareDocs user, ids, rule, (err) ->
-    #        callback err
+            shareDocs user, ids, rule, (err) ->
+                callback err
 
 
-# Replication documents and save the replication
+    # No active replication, notify the target
+    else
+        bufferIds = ids #TODO: remove this
+        notifyTarget user, rule, (err) ->
+            callback err
+
+
+
+# Replicate documents and save the replication
 shareDocs = (user, ids, rule, callback) ->
 
-
-    notifyTarget user, rule, (err) ->
-
-
-    ###
-    Ask the target first
     replicateDocs user.target, ids, (err, repID) ->
         return callback err if err?
 
         saveReplication rule, user.userID, repID, (err) ->
-            callback err
-    ###
+            callback err, repID
 
-notifyTarget = (user, rule, callback) ->
-    remote = request.newClient "https://192.168.50.5"
-    remote.post "sharing/request", request: rule, (err, res, body) ->
-        console.log 'res : ' + JSON.stringify res
+notifyTarget = (user, rule,  callback) ->
+    user.target = "http://192.168.50.6:9104"
+    sharing =
+        url: 'http://192.168.50.4:9104' #TODO: change this
+        shareID: rule.id
+        userID: user.userID
+        desc: rule.name
+    remote = request.newClient user.target
+    remote.post "sharing/request", request: sharing, (err, res, body) ->
+        console.log 'body : ' + JSON.stringify body
+        callback err
+
+# Answer sent by the target
+module.exports.targetAnswer = (req, res, next) ->
+    console.log 'answer : ' + JSON.stringify req.body.answer
+    answer = req.body.answer
+    if answer.accepted is yes
+        console.log 'target is ok for sharing, lets go'
+        # find doc by share id and user by userid
+        # update accepted: yes
+        # replicate
+
+        rule = getRuleById answer.shareID
+        user =
+            userID: answer.userID
+            target: "http://192.168.50.6:9104"
+        shareDocs user, bufferIds, rule, (err, repID) ->
+            return next err if err?
+            res.send 500 unless repID?
+            res.send 200, repID
+    else
+        bufferIds = []
+        console.log 'target is not ok for sharing, drop it'
+
+
 
 # Share the ids to the specifiedtarget
 replicateDocs = (target, ids, callback) ->
@@ -445,7 +473,8 @@ replicateDocs = (target, ids, callback) ->
 
     couchClient = request.newClient "http://localhost:5984"
     sourceURL = "http://192.168.50.4:5984/cozy"
-    targetURL = "http://pzjWbznBQPtfJ0es6cvHQKX0cGVqNfHW:NPjnFATLxdvzLxsFh9wzyqSYx4CjG30U@192.168.50.5:5984/cozy"
+    #targetURL = "http://pzjWbznBQPtfJ0es6cvHQKX0cGVqNfHW:NPjnFATLxdvzLxsFh9wzyqSYx4CjG30U@192.168.50.5:5984/cozy"
+    targetURL = "http://192.168.50.6:5984/cozy"
     couchTarget = request.newClient targetURL
 
     repSourceToTarget =
