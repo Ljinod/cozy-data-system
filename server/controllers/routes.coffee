@@ -11,6 +11,7 @@ user = require './user'
 account = require './accounts'
 access = require './access'
 replication = require './replication'
+sharing = require './sharing'
 
 utils = require '../middlewares/utils'
 
@@ -222,3 +223,6 @@ module.exports =
         put: [account.checkPermissions, account.updateKeys]
     'accounts/reset/': delete: [account.checkPermissions, account.resetKeys]
     'accounts/': delete: [account.checkPermissions, account.deleteKeys]
+
+    #Sharing management
+    'sharing/answer': post: sharing.answerRequest

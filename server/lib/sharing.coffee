@@ -427,7 +427,6 @@ userSharing = (shareID, user, ids, callback) ->
 shareDocs = (user, ids, rule, callback) ->
 
     replicateDocs user.target, ids, (err, repID) ->
-        #console.log 'err : ' + JSON.stringify err + ' repID : ' + JSON.stringify repID
         return callback err if err?
 
         saveReplication rule, user.userID, repID, (err) ->
