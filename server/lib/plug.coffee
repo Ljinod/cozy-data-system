@@ -46,7 +46,11 @@ buildSelectDoc = (tuples, callback) ->
     else
         callback null
 
+# Tuples returned by plugdb are in format : [ [userID, docID] ]
 buildACL = (tuples, shareid, callback) ->
+
+    console.log 'build acl for tuples : ' + JSON.stringify tuples
+    console.log 'shareid : ' + shareid
 
     userInArray = (array, userID) ->
         if array?
@@ -73,10 +77,10 @@ q = async.queue (Plug, callback) ->
     p = Plug.params
     #console.log 'params : ' + JSON.stringify p
 
-    if p[0] is 0 then plug.plugInsertDocs p[1], p[2], p[3], (err) ->
-        callback err
-    else if p[0] is 1 then plug.plugInsertUsers p[1], p[2], p[3], (err) ->
-        callback err
+    if p[0] is 0 then plug.plugInsertDocs p[1], p[2], p[3], (err, res) ->
+        callback err, res
+    else if p[0] is 1 then plug.plugInsertUsers p[1], p[2], p[3], (err, res) ->
+        callback err, res
     else if p[0] is 2 then plug.plugInsertDoc p[1], p[2], p[3], (err) ->
         callback err
     else if p[0] is 3 then plug.plugInsertUser p[1], p[2], p[3], (err) ->
@@ -89,6 +93,10 @@ q = async.queue (Plug, callback) ->
         callback err, tuples
     else if p[0] is 7 then plug.plugDeleteMatch p[1], p[2], p[3], (err) ->
         callback err, tuples
+    else if p[0] is 8 then plug.plugInit p[1], (err, status) ->
+        callback err, status
+    else if p[0] is 9 then plug.plugInsertShare p[1], p[2], (err) ->
+        callback err
     else
         callback()
 , 1
@@ -99,11 +107,23 @@ q = async.queue (Plug, callback) ->
 #initialize DB
 init = (callback) ->
     # Setup the timeout handler
-    timeoutProtect = setTimeout((->
+    ###timeoutProtect = setTimeout((->
         timeoutProtect = null
         callback error: 'PlugDB timed out'
     ), 30000)
-
+###
+    port = '/dev/ttyACM0'
+    params = [8, port]
+    q.push {params}, (err, status) ->
+        console.log 'status : ' + status
+        #if timeoutProtect
+        #    clearTimeout timeoutProtect
+        if not err?
+            console.log 'PlugDB is ready'
+            IS_INIT = true
+            BOOT_STATUS = status
+        callback err
+###
     plug.plugInit '/dev/ttyACM0', (err, status) ->
         if timeoutProtect
             clearTimeout timeoutProtect
@@ -113,7 +133,7 @@ init = (callback) ->
                 BOOT_STATUS = status
 
             callback err
-
+###
 
 #insert docids
 insertDocs = (docids, shareid, userParams, callback) ->
@@ -121,7 +141,8 @@ insertDocs = (docids, shareid, userParams, callback) ->
     array = java.newArray('java.lang.String', docids)
     userParams = java.newArray('java.lang.String', userParams) if userParams?
     params = [0, array, shareid, userParams]
-    q.push {params}, (err) ->
+    q.push {params}, (err, res) ->
+        console.log res + ' docs inserted'
         callback err
 
 
@@ -134,7 +155,7 @@ insertUsers = (userids, shareid, userParams, callback) ->
     array = java.newArray('java.lang.String', userids)
     userParams = java.newArray('java.lang.String', userParams) if userParams?
     params = [1, array, shareid, userParams]
-    q.push {params}, (err) ->
+    q.push {params}, (err, res) ->
         callback err
     #plug.plugInsertUsers array, shareid, userParams, (err) ->
     #    callback err
@@ -157,7 +178,8 @@ insertUser = (userid, shareid, userParams, callback) ->
 
 #insert sharing rule
 insertShare = (shareid, description, callback) ->
-    plug.plugInsertShare shareid, description, (err) ->
+    params = [9, shareid, description]
+    q.push {params}, (err) ->
         callback err
 
 #delete doc
@@ -230,7 +252,10 @@ matchAll = (matchingType, ids, shareid, callback) ->
     array = java.newArray('java.lang.String', ids)
     params = [6, matchingType, array, shareid]
     q.push {params}, (err, tuples) ->
+        console.log 'err match : ' + JSON.stringify err if err?
+
         return callback err if err?
+
 
         buildACL tuples, shareid, (acl) ->
             return callback err, acl

@@ -440,7 +440,9 @@ notifyTarget = (user, rule,  callback) ->
     remote = request.newClient user.target
     remote.post "sharing/request", request: sharing, (err, res, body) ->
         console.log 'body : ' + JSON.stringify body
-        callback err
+        error = err if err? and Object.keys(err).length > 0
+
+        callback error
 
 # Answer sent by the target
 module.exports.targetAnswer = (req, res, next) ->
@@ -530,18 +532,23 @@ updateActiveRep = (shareID, activeReplications, callback) ->
 saveReplication = (rule, userID, replicationID, callback) ->
     return callback null unless rule? and replicationID?
 
-    #console.log 'save replication ' + replicationID
-    if rule.activeReplications?.length > 0
 
+    console.log 'save replication ' + replicationID + ' with userid ' + userID
+    if rule.activeReplications?.length > 0
+        isUpdate = false
         async.each rule.activeReplications, (rep, _callback) ->
-            # Remove from array when the userID matches
-            if rep?.userID ?= userID
+            # Update repID if userID already exists
+            if rep?.userID == userID
                 rep.replicationID = replicationID
+                isUpdate = true
+
             _callback null
-                #i = rule.activeReplications.indexOf rep
-                #rule.activeReplications.splice i, 1 if i > -1
 
         , (err) ->
+            console.log 'is update : ' + isUpdate
+            # insert a new replication it the userID didn't exist before
+            rule.activeReplications.push {userID, replicationID} if not isUpdate
+
             updateActiveRep rule.id, rule.activeReplications, (err) ->
                 callback err
     else
@@ -562,7 +569,7 @@ removeReplication = (rule, replicationID, userID, callback) ->
         # There are active replications
         if rule.activeReplications?
             async.each rule.activeReplications, (rep, _callback) ->
-                if rep?.userID ?= userID
+                if rep?.userID == userID
                     i = rule.activeReplications.indexOf rep
                     rule.activeReplications.splice i, 1 if i > -1
                     updateActiveRep rule.id, rule.activeReplications, (err) ->
