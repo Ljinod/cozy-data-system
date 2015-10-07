@@ -138,5 +138,8 @@ module.exports = {
   },
   'sharing/answer': {
     post: sharing.answerRequest
+  },
+  'sharing/new': {
+    post: sharing.createNewShare
   }
 };

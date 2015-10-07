@@ -25,7 +25,6 @@ module.exports.evalInsert = function(doc, id, callback) {
       }
       console.log('mapping results insert : ' + JSON.stringify(mapResults));
       return matchAfterInsert(mapResults, function(err, acls) {
-        console.log('acls : ' + JSON.stringify(acls));
         if (err != null) {
           return callback(err);
         }
@@ -437,7 +436,6 @@ startShares = function(acls, callback) {
 };
 
 sharingProcess = function(share, callback) {
-  console.log('share : ' + JSON.stringify(share));
   if (!((share != null) && (share.users != null))) {
     return callback(null);
   }
@@ -536,6 +534,11 @@ module.exports.targetAnswer = function(req, res, next) {
     bufferIds = [];
     return console.log('target is not ok for sharing, drop it');
   }
+};
+
+module.exports.createNewShare = function(req, res, next) {
+  console.log('new share : ' + JSON.stringify(req.body.share));
+  return res.send(200);
 };
 
 replicateDocs = function(target, ids, callback) {

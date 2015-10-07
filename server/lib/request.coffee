@@ -263,6 +263,24 @@ initializeDSView = (callback) ->
                     }
                 }
                 """
+        # Usefull to manage usersharing access
+        usersharing:
+            all:
+                map: """
+                function(doc) {
+                    if(doc.docType && doc.docType.toLowerCase() === "usersharing") {
+                        return emit(doc._id, doc);
+                    }
+                }
+                """
+            byLogin:
+                map: """
+                function (doc) {
+                    if(doc.docType && doc.docType.toLowerCase() === "usersharing") {
+                        return emit(doc.login, doc)
+                    }
+                }
+                """
 
     async.forEach Object.keys(views), (docType, cb) ->
         view = views[docType]

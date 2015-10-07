@@ -136,6 +136,7 @@ q = async.queue(function(Plug, callback) {
     });
   } else if (p[0] === 6) {
     return plug.plugMatchAll(p[1], p[2], p[3], function(err, tuples) {
+      console.log('macth ok');
       return callback(err, tuples);
     });
   } else if (p[0] === 7) {
@@ -296,6 +297,7 @@ selectDocsByDocID = function(docid, callback) {
       return callback(err);
     }
     return buildSelect(DOCS, tuples, function(result) {
+      console.log('select docs ok');
       return callback(null, result);
     });
   });

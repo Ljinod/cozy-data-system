@@ -90,6 +90,7 @@ q = async.queue (Plug, callback) ->
     else if p[0] is 5 then plug.plugSelectUsersByUserID p[1], (err, tuples) ->
         callback err, tuples
     else if p[0] is 6 then plug.plugMatchAll p[1], p[2], p[3], (err, tuples) ->
+        console.log 'macth ok'
         callback err, tuples
     else if p[0] is 7 then plug.plugDeleteMatch p[1], p[2], p[3], (err) ->
         callback err, tuples
@@ -144,7 +145,6 @@ insertDocs = (docids, shareid, userParams, callback) ->
     q.push {params}, (err, res) ->
         console.log res + ' docs inserted'
         callback err
-
 
     #plug.plugInsertDocs array, shareid, userParams, (err) ->
     #    callback err
@@ -211,7 +211,7 @@ selectUsers = (callback) ->
     return
   return
 
-# Select star on docs where docID = ?
+# Select star on acl where docID = ?
 # Returns an acl[][] array
 selectDocsByDocID = (docid, callback) ->
     params = [4, docid]
@@ -219,6 +219,7 @@ selectDocsByDocID = (docid, callback) ->
         return callback err if err?
 
         buildSelect DOCS, tuples, (result) ->
+            console.log 'select docs ok'
             callback null, result
 
     ###plug.plugSelectDocsByDocID docid, (err, tuples) ->
@@ -255,7 +256,6 @@ matchAll = (matchingType, ids, shareid, callback) ->
         console.log 'err match : ' + JSON.stringify err if err?
 
         return callback err if err?
-
 
         buildACL tuples, shareid, (acl) ->
             return callback err, acl

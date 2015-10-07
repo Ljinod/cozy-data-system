@@ -141,7 +141,7 @@ module.exports = (callback) ->
     db_ensure () ->
         # Initialize request view.
         request.init (err) =>
+            console.log 'err : ' + JSON.stringify err
             # Initialize application access.
             initTokens (tokens, permissions) =>
                 callback() if callback?
-

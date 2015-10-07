@@ -29,7 +29,7 @@ module.exports.evalInsert = (doc, id, callback) ->
             console.log 'mapping results insert : ' + JSON.stringify mapResults
             matchAfterInsert mapResults, (err, acls) ->
                 #acl :
-                console.log 'acls : ' + JSON.stringify acls
+                #console.log 'acls : ' + JSON.stringify acls
 
                 return callback err if err?
                 return callback null unless acls? and acls.length > 0
@@ -376,7 +376,7 @@ startShares = (acls, callback) ->
 
 # Create the sharing for each user concerned
 sharingProcess = (share, callback) ->
-    console.log 'share : ' + JSON.stringify share
+    #console.log 'share : ' + JSON.stringify share
     return callback null unless share? and share.users?
 
     async.each share.users, (user, _callback) ->
@@ -466,9 +466,13 @@ module.exports.targetAnswer = (req, res, next) ->
         bufferIds = []
         console.log 'target is not ok for sharing, drop it'
 
-
+module.exports.createNewShare = (req, res, next) ->
+    console.log 'new share : ' + JSON.stringify req.body.share
+    res.send 200
 
 # Share the ids to the specifiedtarget
+# TODO : do not replicate like a fool on the remote open couchdb port
+# use the route https//cozy/dsApi/replication with credentials previously set
 replicateDocs = (target, ids, callback) ->
 
     console.log 'lets replicate ' + JSON.stringify ids + ' on target ' + target
@@ -707,7 +711,7 @@ module.exports.initRules = (callback) ->
         callback()
 
 
-# Utils - should be moved
+# Utils - should be moved or removed
 userInArray = (array, userID) ->
     if array?
         return yes for ar in array when ar.userID == userID
