@@ -477,7 +477,7 @@ module.exports.createNewShare = (req, res, next) ->
 replicateDocs = (target, ids, callback) ->
 
     console.log 'lets replicate ' + JSON.stringify ids + ' on target ' + target.url
-    console.log 'user : ' + target.user + ' - pwd : ' + target.password
+    console.log 'user : ' + target.login + ' - pwd : ' + target.password
 
     #couchClient = request.newClient "http://localhost:5984"
     sourceURL = "http://192.168.50.4:5984/cozy"
