@@ -478,7 +478,7 @@ userSharing = function(shareID, user, ids, callback) {
 };
 
 shareDocs = function(user, ids, rule, callback) {
-  return replicateDocs(user.target, ids, function(err, repID) {
+  return replicateDocs(user, ids, function(err, repID) {
     if (err != null) {
       return callback(err);
     }
@@ -518,8 +518,9 @@ module.exports.targetAnswer = function(req, res, next) {
     console.log('target is ok for sharing, lets go');
     rule = getRuleById(answer.shareID);
     user = {
-      userID: answer.userID,
-      target: "http://192.168.50.6:9104"
+      login: answer.userID,
+      url: "http://192.168.50.6:9104",
+      password: answer.password
     };
     return shareDocs(user, bufferIds, rule, function(err, repID) {
       if (err != null) {
@@ -542,15 +543,15 @@ module.exports.createNewShare = function(req, res, next) {
 };
 
 replicateDocs = function(target, ids, callback) {
-  var couchClient, couchTarget, repSourceToTarget, repTargetToSource, sourceURL, targetURL;
-  console.log('lets replicate ' + JSON.stringify(ids + ' on target ' + target));
-  couchClient = request.newClient("http://localhost:5984");
+  var couchTarget, repSourceToTarget, repTargetToSource, sourceURL;
+  console.log('lets replicate ' + JSON.stringify(ids + ' on target ' + target.url));
+  console.log('user : ' + target.user + ' - pwd : ' + target.password);
   sourceURL = "http://192.168.50.4:5984/cozy";
-  targetURL = "http://192.168.50.6:5984/cozy";
-  couchTarget = request.newClient(targetURL);
+  couchTarget = request.newClient(target.url);
+  couchTarget.setBasicAuth(target.login, target.password);
   repSourceToTarget = {
-    source: "cozy",
-    target: targetURL,
+    source: sourceURL,
+    target: target.url,
     continuous: true,
     doc_ids: ids
   };
@@ -560,7 +561,7 @@ replicateDocs = function(target, ids, callback) {
     continuous: true,
     doc_ids: ids
   };
-  return couchClient.post("_replicate", repSourceToTarget, function(err, res, body) {
+  return couchTarget.post("replication/", repSourceToTarget, function(err, res, body) {
     var replicationID;
     if (err != null) {
       return callback(err);
@@ -571,18 +572,18 @@ replicateDocs = function(target, ids, callback) {
       console.log('Replication from source suceeded \o/');
       console.log(JSON.stringify(body));
       replicationID = body._local_id;
-      return couchTarget.post("_replicate", repTargetToSource, function(err, res, body) {
-        if (err != null) {
-          return callback(err);
-        } else if (!body.ok) {
-          console.log(JSON.stringify(body));
-          return callback(body);
-        } else {
-          console.log('Replication from target suceeded \o/');
-          console.log(JSON.stringify(body));
-          return callback(err, replicationID);
-        }
-      });
+
+      /*couchTarget.post "_replicate", repTargetToSource, (err, res, body)->
+          if err? then callback err
+          else if not body.ok
+              console.log JSON.stringify body
+              callback body
+          else
+              console.log 'Replication from target suceeded \o/'
+              console.log JSON.stringify body
+              callback err, replicationID
+       */
+      return callback(err, replicationID);
     }
   });
 };

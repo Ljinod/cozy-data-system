@@ -185,6 +185,14 @@ initializeDSView = function(callback) {
       all: {
         map: "function(doc) {\n    if(doc.docType && doc.docType.toLowerCase() === \"sharing\") {\n        return emit(doc._id, doc);\n    }\n}"
       }
+    },
+    usersharing: {
+      all: {
+        map: "function(doc) {\n    if(doc.docType && doc.docType.toLowerCase() === \"usersharing\") {\n        return emit(doc._id, doc);\n    }\n}"
+      },
+      byLogin: {
+        map: "function (doc) {\n    if(doc.docType && doc.docType.toLowerCase() === \"usersharing\") {\n        return emit(doc.login, doc)\n    }\n}"
+      }
     }
   };
   return async.forEach(Object.keys(views), function(docType, cb) {

@@ -424,7 +424,7 @@ userSharing = (shareID, user, ids, callback) ->
 # Replicate documents and save the replication
 shareDocs = (user, ids, rule, callback) ->
 
-    replicateDocs user.target, ids, (err, repID) ->
+    replicateDocs user, ids, (err, repID) ->
         return callback err if err?
 
         saveReplication rule, user.userID, repID, (err) ->
@@ -456,8 +456,9 @@ module.exports.targetAnswer = (req, res, next) ->
 
         rule = getRuleById answer.shareID
         user =
-            userID: answer.userID
-            target: "http://192.168.50.6:9104"
+            login: answer.userID
+            url: "http://192.168.50.6:9104"
+            password: answer.password
         shareDocs user, bufferIds, rule, (err, repID) ->
             return next err if err?
             res.send 500 unless repID?
@@ -475,17 +476,18 @@ module.exports.createNewShare = (req, res, next) ->
 # use the route https//cozy/dsApi/replication with credentials previously set
 replicateDocs = (target, ids, callback) ->
 
-    console.log 'lets replicate ' + JSON.stringify ids + ' on target ' + target
+    console.log 'lets replicate ' + JSON.stringify ids + ' on target ' + target.url
+    console.log 'user : ' + target.user + ' - pwd : ' + target.password
 
-    couchClient = request.newClient "http://localhost:5984"
+    #couchClient = request.newClient "http://localhost:5984"
     sourceURL = "http://192.168.50.4:5984/cozy"
     #targetURL = "http://pzjWbznBQPtfJ0es6cvHQKX0cGVqNfHW:NPjnFATLxdvzLxsFh9wzyqSYx4CjG30U@192.168.50.5:5984/cozy"
-    targetURL = "http://192.168.50.6:5984/cozy"
-    couchTarget = request.newClient targetURL
+    couchTarget = request.newClient target.url
+    couchTarget.setBasicAuth target.login, target.password
 
     repSourceToTarget =
-        source: "cozy"
-        target: targetURL
+        source: sourceURL
+        target: target.url
         continuous: true
         doc_ids: ids
 
@@ -496,7 +498,7 @@ replicateDocs = (target, ids, callback) ->
         continuous: true
         doc_ids: ids
 
-    couchClient.post "_replicate", repSourceToTarget, (err, res, body) ->
+    couchTarget.post "replication/", repSourceToTarget, (err, res, body) ->
         #err is sometimes empty, even if it has failed
         if err? then callback err
         else if not body.ok
@@ -506,7 +508,7 @@ replicateDocs = (target, ids, callback) ->
             console.log 'Replication from source suceeded \o/'
             console.log JSON.stringify body
             replicationID = body._local_id
-            couchTarget.post "_replicate", repTargetToSource, (err, res, body)->
+            ###couchTarget.post "_replicate", repTargetToSource, (err, res, body)->
                 if err? then callback err
                 else if not body.ok
                     console.log JSON.stringify body
@@ -515,7 +517,8 @@ replicateDocs = (target, ids, callback) ->
                     console.log 'Replication from target suceeded \o/'
                     console.log JSON.stringify body
                     callback err, replicationID
-
+            ###
+            callback err, replicationID
 
 
 # Update the sharing doc on the activeReplications field
