@@ -543,15 +543,15 @@ module.exports.createNewShare = function(req, res, next) {
 };
 
 replicateDocs = function(target, ids, callback) {
-  var couchTarget, repSourceToTarget, repTargetToSource, sourceURL;
+  var couchClient, repSourceToTarget, repTargetToSource, sourceURL, targetURL;
   console.log('lets replicate ' + JSON.stringify(ids + ' on target ' + target.url));
   console.log('user : ' + target.login + ' - pwd : ' + target.password);
-  sourceURL = "http://192.168.50.4:5984/cozy";
-  couchTarget = request.newClient(target.url);
-  couchTarget.setBasicAuth(target.login, target.password);
+  sourceURL = "http://192.168.50.4:5984";
+  targetURL = target.url.replace("http://", "http://" + target.login + ":" + target.password + "@");
+  couchClient = request.newClient(sourceURL);
   repSourceToTarget = {
-    source: sourceURL,
-    target: target.url,
+    source: "cozy",
+    target: targetURL + "/replication",
     continuous: true,
     doc_ids: ids
   };
@@ -561,7 +561,8 @@ replicateDocs = function(target, ids, callback) {
     continuous: true,
     doc_ids: ids
   };
-  return couchTarget.post("replication/", repSourceToTarget, function(err, res, body) {
+  console.log('rep data : ' + JSON.stringify(repSourceToTarget));
+  return couchClient.post("_replicate", repSourceToTarget, function(err, res, body) {
     var replicationID;
     if (err != null) {
       return callback(err);

@@ -480,14 +480,15 @@ replicateDocs = (target, ids, callback) ->
     console.log 'user : ' + target.login + ' - pwd : ' + target.password
 
     #couchClient = request.newClient "http://localhost:5984"
-    sourceURL = "http://192.168.50.4:5984/cozy"
+    sourceURL = "http://192.168.50.4:5984"
+    targetURL = target.url.replace "http://", "http://" + target.login + ":" + target.password + "@"
     #targetURL = "http://pzjWbznBQPtfJ0es6cvHQKX0cGVqNfHW:NPjnFATLxdvzLxsFh9wzyqSYx4CjG30U@192.168.50.5:5984/cozy"
-    couchTarget = request.newClient target.url
-    couchTarget.setBasicAuth target.login, target.password
+    couchClient = request.newClient sourceURL
+    #couchTarget.setBasicAuth target.login, target.password
 
     repSourceToTarget =
-        source: sourceURL
-        target: target.url
+        source: "cozy"
+        target: targetURL + "/replication"
         continuous: true
         doc_ids: ids
 
@@ -498,7 +499,9 @@ replicateDocs = (target, ids, callback) ->
         continuous: true
         doc_ids: ids
 
-    couchTarget.post "replication/", repSourceToTarget, (err, res, body) ->
+    console.log 'rep data : ' + JSON.stringify repSourceToTarget
+
+    couchClient.post "_replicate", repSourceToTarget, (err, res, body) ->
         #err is sometimes empty, even if it has failed
         if err? then callback err
         else if not body.ok
