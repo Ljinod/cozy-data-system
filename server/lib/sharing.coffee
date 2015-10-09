@@ -494,7 +494,7 @@ replicateDocs = (target, ids, callback) ->
 
     repSourceToTarget =
         source: "cozy"
-        target: targetURL + "/replication"
+        target: targetURL + "/cozy" # should be /replication but oh well... :(
         #continuous: true
         doc_ids: ids
 
@@ -748,7 +748,8 @@ getUserInfo= (array, userID) ->
         for activeRep in array
             if activeRep.userID == userID
                 return [activeRep.replicationID, activeRep.pwd]
-        return [null, null]
+    return [null, null]
+
 shareIDInArray = (array, shareID) ->
     if array?
         for ar in array
