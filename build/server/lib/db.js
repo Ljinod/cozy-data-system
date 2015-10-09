@@ -174,7 +174,6 @@ module.exports = function(callback) {
   return db_ensure(function() {
     return request.init((function(_this) {
       return function(err) {
-        console.log('err : ' + JSON.stringify(err));
         return initTokens(function(tokens, permissions) {
           if (callback != null) {
             return callback();

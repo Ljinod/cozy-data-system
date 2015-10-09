@@ -2,6 +2,7 @@ plug = require './plug'
 db = require('../helpers/db_connect_helper').db_connect()
 async = require 'async'
 request = require 'request-json'
+request2 = require 'request'
 
 # Contains all the sharing rules
 # Avoid to request CouchDB for each document
@@ -384,7 +385,7 @@ sharingProcess = (share, callback) ->
         # Get remote address based on userID
         getCozyAddressFromUserID user.userID, (err, url) ->
             # TODO : handle errors and empty url
-            user.target = url
+            user.url = "http://192.168.50.6:9104" #TODO : change this
 
             # Start the full sharing process for one user
             userSharing share.shareID, user, share.docIDs, (err) ->
@@ -403,8 +404,9 @@ userSharing = (shareID, user, ids, callback) ->
 
     # Get the replicationID in rules based on the userID
     # Note : need to think more in case several users
-    replicationID = getRepID rule.activeReplications, user.userID
-    console.log 'replication id : ' + replicationID
+    [replicationID, pwd] = getUserInfo rule.activeReplications, user.userID
+    user.pwd = pwd
+    console.log 'replication id : ' + replicationID + ' - pwd : ' + user.pwd
     # Replication exists for this user, cancel it
     if replicationID?
         cancelReplication replicationID, (err) ->
@@ -427,7 +429,7 @@ shareDocs = (user, ids, rule, callback) ->
     replicateDocs user, ids, (err, repID) ->
         return callback err if err?
 
-        saveReplication rule, user.userID, repID, (err) ->
+        saveReplication rule, user.userID, repID, user.pwd, (err) ->
             callback err, repID
 
 notifyTarget = (user, rule,  callback) ->
@@ -456,9 +458,9 @@ module.exports.targetAnswer = (req, res, next) ->
 
         rule = getRuleById answer.shareID
         user =
-            login: answer.userID
+            userID: answer.userID
             url: "http://192.168.50.6:9104"
-            password: answer.password
+            pwd: answer.password
         shareDocs user, bufferIds, rule, (err, repID) ->
             return next err if err?
             res.send 500 unless repID?
@@ -477,20 +479,25 @@ module.exports.createNewShare = (req, res, next) ->
 replicateDocs = (target, ids, callback) ->
 
     console.log 'lets replicate ' + JSON.stringify ids + ' on target ' + target.url
-    console.log 'user : ' + target.login + ' - pwd : ' + target.password
+    console.log 'user : ' + target.userID + ' - pwd : ' + target.pwd
+
+    return callback null unless target.url? and target.userID? and target.pwd?
+
 
     #couchClient = request.newClient "http://localhost:5984"
     sourceURL = "http://192.168.50.4:5984"
-    targetURL = target.url.replace "http://", "http://" + target.login + ":" + target.password + "@"
+    #targetURL = target.url.replace "http://", "http://" + target.userID + ":" + target.pwd + "@"
+    targetURL = target.url
     #targetURL = "http://pzjWbznBQPtfJ0es6cvHQKX0cGVqNfHW:NPjnFATLxdvzLxsFh9wzyqSYx4CjG30U@192.168.50.5:5984/cozy"
     couchClient = request.newClient sourceURL
-    #couchTarget.setBasicAuth target.login, target.password
+    #couchTarget.setBasicAuth target.login, target.pwd
 
     repSourceToTarget =
         source: "cozy"
         target: targetURL + "/replication"
-        continuous: true
+        #continuous: true
         doc_ids: ids
+
 
     # For bilateral sync; should be initiated by the target
     repTargetToSource =
@@ -500,7 +507,7 @@ replicateDocs = (target, ids, callback) ->
         doc_ids: ids
 
     console.log 'rep data : ' + JSON.stringify repSourceToTarget
-
+    ###
     couchClient.post "_replicate", repSourceToTarget, (err, res, body) ->
         #err is sometimes empty, even if it has failed
         if err? then callback err
@@ -511,7 +518,8 @@ replicateDocs = (target, ids, callback) ->
             console.log 'Replication from source suceeded \o/'
             console.log JSON.stringify body
             replicationID = body._local_id
-            ###couchTarget.post "_replicate", repTargetToSource, (err, res, body)->
+            callback err, replicationID
+            couchTarget.post "_replicate", repTargetToSource, (err, res, body)->
                 if err? then callback err
                 else if not body.ok
                     console.log JSON.stringify body
@@ -521,7 +529,16 @@ replicateDocs = (target, ids, callback) ->
                     console.log JSON.stringify body
                     callback err, replicationID
             ###
-            callback err, replicationID
+
+    headers =
+        'Content-Type': 'application/json'
+    options =
+        method: 'POST'
+        headers: headers
+        uri: sourceURL + "/_replicate"
+    options['body'] = JSON.stringify repSourceToTarget
+    request2 options, (err, res, body) ->
+        console.log JSON.stringify body
 
 
 # Update the sharing doc on the activeReplications field
@@ -539,11 +556,13 @@ updateActiveRep = (shareID, activeReplications, callback) ->
             callback err
 
 # Write the replication id in the sharing doc and save in RAM
-saveReplication = (rule, userID, replicationID, callback) ->
+saveReplication = (rule, userID, replicationID, pwd, callback) ->
     return callback null unless rule? and replicationID?
 
 
     console.log 'save replication ' + replicationID + ' with userid ' + userID
+    console.log 'pwd : ' + pwd
+
     if rule.activeReplications?.length > 0
         isUpdate = false
         async.each rule.activeReplications, (rep, _callback) ->
@@ -556,13 +575,14 @@ saveReplication = (rule, userID, replicationID, callback) ->
 
         , (err) ->
             console.log 'is update : ' + isUpdate
-            # insert a new replication it the userID didn't exist before
-            rule.activeReplications.push {userID, replicationID} if not isUpdate
+            # insert a new replication if the userID didn't exist before
+            if not isUpdate
+                rule.activeReplications.push {userID, replicationID, pwd}
 
             updateActiveRep rule.id, rule.activeReplications, (err) ->
                 callback err
     else
-        rule.activeReplications = [{userID, replicationID}]
+        rule.activeReplications = [{userID, replicationID, pwd}]
         updateActiveRep rule.id, rule.activeReplications, (err) ->
             callback err
 
@@ -723,11 +743,12 @@ userInArray = (array, userID) ->
         return yes for ar in array when ar.userID == userID
     return no
 
-getRepID= (array, userID) ->
+getUserInfo= (array, userID) ->
     if array?
         for activeRep in array
-            return activeRep.replicationID if activeRep.userID == userID
-
+            if activeRep.userID == userID
+                return [activeRep.replicationID, activeRep.pwd]
+        return [null, null]
 shareIDInArray = (array, shareID) ->
     if array?
         for ar in array

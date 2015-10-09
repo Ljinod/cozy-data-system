@@ -159,7 +159,7 @@ module.exports =
 
     'replication/*':
         'post': [
-            utils.checkPermissionsPostReplication
+            #utils.checkPermissionsPostReplication
             replication.proxy
         ]
         'get': [
@@ -167,7 +167,7 @@ module.exports =
             # Permissions manage in request
         ]
         'put':[
-            utils.checkPermissionsPutReplication
+            #utils.checkPermissionsPutReplication
             replication.proxy
         ]
 

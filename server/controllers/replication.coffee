@@ -91,14 +91,20 @@ requestOptions = (req) ->
 
 
 module.exports.proxy = (req, res, next) ->
+    console.log 'hop'
     [err, options] = requestOptions req
+    console.log 'err request: ' + JSON.stringify err
+    console.log 'contact couch with options : ' + JSON.stringify options
+
     # Device isn't authorized if err
     return res.send 403, err if err?
 
     stream = through()
+
     couchReq  = request options
         # Receive from couchDB and transmit it to device
         .on 'response', (response) ->
+            console.log 'response : ' + JSON.stringify response
             # Set headers and statusCode
             headers = couchDBHeaders(response.headers)
             res.set headers
@@ -108,6 +114,7 @@ module.exports.proxy = (req, res, next) ->
             data = []
             permissions = false
             response.on 'data', (chunk) ->
+                console.log 'data : ' + JSON.stringify chunk
                 if req.method is 'GET'
                     if permissions
                         res.write chunk
@@ -123,6 +130,7 @@ module.exports.proxy = (req, res, next) ->
                         # Check document docType
                         if doc
                             err = checkPermissions req, doc.docType
+                            console.log 'error? : ' + JSON.stringify err
                             if err
                                 # Device isn't authorized
                                 res.send 403, err
@@ -134,10 +142,11 @@ module.exports.proxy = (req, res, next) ->
                     res.write chunk
 
             response.on 'end', ()->
+                console.log 'end'
                 res.end()
 
         .on 'error', (err) ->
-            console.log 'error'
+            console.log 'error : ' + JSON.stringify err
             return res.send 500, err
 
     stream.pipe couchReq
@@ -146,15 +155,18 @@ module.exports.proxy = (req, res, next) ->
     data = []
     permissions = false
     req.on 'data', (chunk) =>
+        console.log 'data from supposed device'
         if permissions
             stream.emit 'data', chunk
         else
             data.push chunk
             [err, doc] = retrieveJsonDocument Buffer.concat(data).toString()
+            console.log 'err : ' + JSON.stringify err + ' - doc : ' + JSON.stringify doc
             unless err
                 # Check doc
                 err = checkPermissions req, doc.docType
                 if err
+                    console.log 'kaboum, not autorized : ' + JSON.stringify err
                     # Device isn't authorized
                     res.send 403, err
                     stream.emit 'end'
