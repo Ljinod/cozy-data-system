@@ -93,10 +93,11 @@ module.exports.create = (req, res, next) ->
                         err.status = 409
                         next err
                     else
-                        # Eval the doc against the sharing rules
-                        sharing.evalInsert req.body, doc.id, (err) ->
-                            if err?
-                                console.log 'Eval error : ' + JSON.stringify err
+                        if process.env.USE_PLUGDB
+                            # Eval the doc against the sharing rules
+                            sharing.evalInsert req.body, doc.id, (err) ->
+                                if err?
+                                    console.log 'Eval error : ' + JSON.stringify err
 
                         res.send 201, _id: doc.id
     else
@@ -104,9 +105,10 @@ module.exports.create = (req, res, next) ->
             if err
                 next err
             else
-                sharing.evalInsert req.body, doc.id, (err) ->
-                    if err?
-                        console.log 'Eval error : ' + JSON.stringify err
+                if process.env.USE_PLUGDB
+                    sharing.evalInsert req.body, doc.id, (err) ->
+                        if err?
+                            console.log 'Eval error : ' + JSON.stringify err
                 res.send 201, _id: doc.id
 
 # PUT /data/:id/
@@ -167,8 +169,9 @@ module.exports.merge = (req, res, next) ->
         else
             res.send 200, success: true
             next()
-            sharing.evalUpdate req.params.id, false, (err) ->
-                if err?
-                    console.log 'Error on eval update : ' + JSON.stringify err
-                else
-                    console.log 'eval merge ok'
+            if process.env.USE_PLUGDB
+                sharing.evalUpdate req.params.id, false, (err) ->
+                    if err?
+                        console.log 'Error on eval update : ' + JSON.stringify err
+                    else
+                        console.log 'eval merge ok'

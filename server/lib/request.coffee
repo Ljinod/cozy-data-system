@@ -348,13 +348,16 @@ module.exports.init = (callback) =>
                 recoverDesignDocs (err, docs) =>
                     return callback err if err?
                     async.forEach docs, (doc, cb) ->
-                        async.forEach Object.keys(doc.views), (view, cb) ->
-                            body = doc.views[view]
-                            storeAppView apps, doc, view, body, cb
-                        , (err) ->
-                            removeEmptyView doc, (err) ->
-                                log.error err if err?
-                                cb()
+                        if doc.views
+                            async.forEach Object.keys(doc.views), (view, cb) ->
+                                body = doc.views[view]
+                                storeAppView apps, doc, view, body, cb
+                            , (err) ->
+                                removeEmptyView doc, (err) ->
+                                    log.error err if err?
+                                    cb()
+                        else
+                            cb()
                     , (err) ->
                         log.error err if err?
                         callback()
