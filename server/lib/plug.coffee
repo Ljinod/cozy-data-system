@@ -301,10 +301,9 @@ close = (callback) ->
 
 #Authenticate by fingerprint
 authFP = (callback) ->
-  plug.plugFPAuthentication (err, authID) ->
-    callback err, authID
-    return
-  return
+    plug.plugFPAuthentication (err, authID) ->
+        callback err, authID
+        
 
 exports.USERS = USERS
 exports.DOCS = DOCS

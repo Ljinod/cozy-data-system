@@ -204,6 +204,7 @@ module.exports.removeAccess = (doc, callback) ->
 ## Initialize tokens and permissions for Home and Proxy
 initHomeProxy = (callback) ->
     token = process.env.TOKEN
+    console.log 'token : ' + token
     token = token.split('\n')[0]
     # Add home token and permissions
     tokens['home'] = token
@@ -273,4 +274,3 @@ module.exports.init = (callback) ->
                 callback tokens, permissions
     else
         callback tokens, permissions
-

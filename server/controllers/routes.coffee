@@ -12,6 +12,7 @@ account = require './accounts'
 access = require './access'
 replication = require './replication'
 sharing = require './sharing'
+plugdb = require './plugdb'
 
 utils = require '../middlewares/utils'
 
@@ -226,3 +227,6 @@ module.exports =
 
     #Sharing management
     'sharing/answer': post: sharing.answerRequest
+
+    #PlugDB
+    'fingerprint': post: plugdb.auth
