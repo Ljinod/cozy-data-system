@@ -18,26 +18,31 @@ bufferIds = []
 module.exports.evalInsert = (doc, id, callback) ->
     console.log 'doc insert : '  + JSON.stringify doc
 
-    mapDocInRules doc, id, (err, mapResults) ->
-        # mapResults : [ doc: {docID, userID, shareID, userParams, binaries},
-        #                user: {docID, userID, shareID, userParams, binaries}]
-        return callback err if err?
-
-        # Serial loop, to avoid parallel db access
-        async.eachSeries mapResults, insertResults, (err) ->
+    #Particular case for sharing rules
+    if doc.docType is 'sharingrule'
+        createRule doc, id, (err) ->
+            callback err
+    else
+        mapDocInRules doc, id, (err, mapResults) ->
+            # mapResults : [ doc: {docID, userID, shareID, userParams, binaries},
+            #                user: {docID, userID, shareID, userParams, binaries}]
             return callback err if err?
 
-            console.log 'mapping results insert : ' + JSON.stringify mapResults
-            matchAfterInsert mapResults, (err, acls) ->
-                #acl :
-                #console.log 'acls : ' + JSON.stringify acls
-
+            # Serial loop, to avoid parallel db access
+            async.eachSeries mapResults, insertResults, (err) ->
                 return callback err if err?
-                return callback null unless acls? and acls.length > 0
+
+                console.log 'mapping results insert : ' + JSON.stringify mapResults
+                matchAfterInsert mapResults, (err, acls) ->
+                    #acl :
+                    #console.log 'acls : ' + JSON.stringify acls
+
+                    return callback err if err?
+                    return callback null unless acls? and acls.length > 0
 
 
-                startShares acls, (err) ->
-                    callback err
+                    startShares acls, (err) ->
+                        callback err
 
 
 # Map the upated document against all the sharing rules
@@ -693,7 +698,23 @@ getActiveTasks = (client, callback) ->
 
 
 # TODO : API to manage sharing rules
-module.exports.createRule = (doc, callback) ->
+
+# Particular case at the doc evaluation where a new rule is inserted
+createRule = (doc, id, callback) ->
+    plug.insertShare id, doc.name, (err) ->
+        if err?
+            callback err
+        else
+            rule =
+                id: id
+                name: doc.name
+                filterDoc: doc.filterDoc
+                filterUser: doc.filterUser
+            saveRule rule
+            console.log 'rule inserted'
+            callback null
+
+
 module.exports.deleteRule = (doc, callback) ->
 module.exports.updateRule = (doc, callback) ->
 

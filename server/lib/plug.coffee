@@ -90,7 +90,6 @@ q = async.queue (Plug, callback) ->
     else if p[0] is 5 then plug.plugSelectUsersByUserID p[1], (err, tuples) ->
         callback err, tuples
     else if p[0] is 6 then plug.plugMatchAll p[1], p[2], p[3], (err, tuples) ->
-        console.log 'macth ok'
         callback err, tuples
     else if p[0] is 7 then plug.plugDeleteMatch p[1], p[2], p[3], (err) ->
         callback err, tuples
@@ -303,7 +302,12 @@ close = (callback) ->
 authFP = (callback) ->
     plug.plugFPAuthentication (err, authID) ->
         callback err, authID
-        
+
+#Check if PlugDB is initialized or not
+isInit = (callback) ->
+    plug.plugIsInit (err, isInit) ->
+        callback err, isInit
+
 
 exports.USERS = USERS
 exports.DOCS = DOCS
@@ -329,3 +333,4 @@ exports.match = match
 exports.deleteMatch = deleteMatch
 exports.close = close
 exports.authFP = authFP
+exports.isInit = isInit

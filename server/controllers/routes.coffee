@@ -229,4 +229,6 @@ module.exports =
     'sharing/answer': post: sharing.answerRequest
 
     #PlugDB
-    'fingerprint': post: plugdb.auth
+    'fingerprint':
+        post: plugdb.auth
+        get: plugdb.isAuth

@@ -15,6 +15,7 @@ module.exports = (app, server, callback) ->
                 # Patch: 24/03/15
                 init.addAccesses (err) ->
                     log.error err if err?
+                    ###
                     if process.env.USE_PLUGDB
                         #plugdb
                         init.initPlugDB (err) ->
@@ -24,5 +25,5 @@ module.exports = (app, server, callback) ->
                                 log.error err if err?
                                 init.insertSharesPlugDB (err) ->
                                     log.error err if err?
-
+                    ###
             callback app, server if callback?
