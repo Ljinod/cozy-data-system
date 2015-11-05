@@ -64,6 +64,16 @@ module.exports.evalUpdate = (id, isBinaryUpdate, callback) ->
                 updateProcess id, mapResults, selectResults, isBinaryUpdate, (err, res) ->
                     callback err, res
 
+module.exports.evalDelete = (id, callback) ->
+    #Check if the id corresponds to a sharing Rule
+    rule = getRuleById id
+    console.log 'rule : ' + JSON.stringify rule
+    if rule?
+        rules.splice rules.indexOf rule, 1
+        console.log 'rule deleted'
+    callback()
+
+
 # Insert the map result as a tuple in PlugDB, as a Doc and/or as a User
 # mapResult : {docID, userID, shareID, userParams}
 insertResults = (mapResult, callback) ->
@@ -500,7 +510,7 @@ replicateDocs = (target, ids, callback) ->
     repSourceToTarget =
         source: "cozy"
         target: targetURL + "/cozy" # should be /replication but oh well... :(
-        #continuous: true
+        continuous: true
         doc_ids: ids
 
 
@@ -543,7 +553,16 @@ replicateDocs = (target, ids, callback) ->
         uri: sourceURL + "/_replicate"
     options['body'] = JSON.stringify repSourceToTarget
     request2 options, (err, res, body) ->
-        console.log JSON.stringify body
+        body = JSON.parse body
+        #err is sometimes empty, even if it has failed
+        if err? then callback err
+        else if not body.ok
+            callback body
+        else
+            console.log 'Replication from source suceeded \o/'
+            console.log JSON.stringify body
+            replicationID = body._local_id
+            callback err, replicationID
 
 
 # Update the sharing doc on the activeReplications field
@@ -706,7 +725,7 @@ createRule = (doc, id, callback) ->
             callback err
         else
             rule =
-                id: id
+                _id: id
                 name: doc.name
                 filterDoc: doc.filterDoc
                 filterUser: doc.filterUser

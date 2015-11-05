@@ -158,6 +158,13 @@ module.exports.delete = (req, res, next) ->
             client.del "index/#{id}/", (err, response, resbody) ->
                 send_success()
 
+    if process.env.USE_PLUGDB
+        sharing.evalDelete id, (err) ->
+            if err?
+                console.log 'Error on eval delete : ' + JSON.stringify err
+            else
+                console.log 'eval delete ok'
+
 # PUT /data/merge/:id/
 # this doesn't take care of conflict (erase DB with the sent value)
 module.exports.merge = (req, res, next) ->
