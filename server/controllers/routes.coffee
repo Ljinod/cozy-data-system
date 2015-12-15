@@ -227,8 +227,3 @@ module.exports =
 
     #Sharing management
     'sharing/answer': post: sharing.answerRequest
-
-    #PlugDB
-    'fingerprint':
-        post: plugdb.auth
-        get: plugdb.isAuth
