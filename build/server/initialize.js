@@ -24,25 +24,20 @@ module.exports = function(app, server, callback) {
         }
         return init.addAccesses(function(err) {
           if (err != null) {
-            log.error(err);
+            return log.error(err);
           }
-          if (process.env.USE_PLUGDB) {
-            return init.initPlugDB(function(err) {
-              if (err != null) {
-                log.error(err);
-              }
-              return init.addSharingRules(function(err) {
-                if (err != null) {
-                  log.error(err);
-                }
-                return init.insertSharesPlugDB(function(err) {
-                  if (err != null) {
-                    return log.error(err);
-                  }
-                });
-              });
-            });
-          }
+
+          /*
+          if process.env.USE_PLUGDB
+              #plugdb
+              init.initPlugDB (err) ->
+                  log.error err if err?
+                  #sharing rules
+                  init.addSharingRules (err) ->
+                      log.error err if err?
+                      init.insertSharesPlugDB (err) ->
+                          log.error err if err?
+           */
         });
       });
       if (callback != null) {

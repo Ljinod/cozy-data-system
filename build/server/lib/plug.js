@@ -136,7 +136,6 @@ q = async.queue(function(Plug, callback) {
     });
   } else if (p[0] === 6) {
     return plug.plugMatchAll(p[1], p[2], p[3], function(err, tuples) {
-      console.log('macth ok');
       return callback(err, tuples);
     });
   } else if (p[0] === 7) {
@@ -398,8 +397,14 @@ close = function(callback) {
 };
 
 authFP = function(callback) {
-  plug.plugFPAuthentication(function(err, authID) {
-    callback(err, authID);
+  return plug.plugFPAuthentication(function(err, authID) {
+    return callback(err, authID);
+  });
+};
+
+isInit = function(callback) {
+  return plug.plugIsInit(function(err, isInit) {
+    return callback(err, isInit);
   });
 };
 
@@ -446,3 +451,5 @@ exports.deleteMatch = deleteMatch;
 exports.close = close;
 
 exports.authFP = authFP;
+
+exports.isInit = isInit;

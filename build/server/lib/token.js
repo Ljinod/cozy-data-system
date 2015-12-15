@@ -213,6 +213,7 @@ module.exports.removeAccess = function(doc, callback) {
 initHomeProxy = function(callback) {
   var token;
   token = process.env.TOKEN;
+  console.log('token : ' + token);
   token = token.split('\n')[0];
   tokens['home'] = token;
   permissions.home = {

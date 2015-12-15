@@ -180,7 +180,7 @@ module.exports["delete"] = function(req, res, next) {
     });
     return next();
   };
-  return dbHelper.remove(req.doc, function(err, res) {
+  dbHelper.remove(req.doc, function(err, res) {
     if (err) {
       return next(err);
     } else {
@@ -189,6 +189,15 @@ module.exports["delete"] = function(req, res, next) {
       });
     }
   });
+  if (process.env.USE_PLUGDB) {
+    return sharing.evalDelete(id, function(err) {
+      if (err != null) {
+        return console.log('Error on eval delete : ' + JSON.stringify(err));
+      } else {
+        return console.log('eval delete ok');
+      }
+    });
+  }
 };
 
 module.exports.merge = function(req, res, next) {
