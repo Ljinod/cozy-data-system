@@ -440,15 +440,16 @@ shareDocs = (user, ids, rule, callback) ->
         saveReplication rule, user.userID, repID, user.pwd, (err) ->
             callback err, repID
 
-notifyTarget = (user, rule,  callback) ->
-    user.target = "http://192.168.50.6:9104"
-    sharing =
-        url: 'http://192.168.50.4:9104' #TODO: change this
-        shareID: rule.id
-        userID: user.userID
-        desc: rule.name
-    remote = request.newClient user.target
-    remote.post "sharing/request", request: sharing, (err, res, body) ->
+# Send a sharing request to a target
+notifyTarget = (targetURL, share, callback) ->
+    params =
+        url: targetURL
+        shareID: share.id
+        desc: share.desc
+        sync: share.isSync
+
+    remote = request.newClient params.url
+    remote.post "sharing/request", request: params, (err, res, body) ->
         console.log 'body : ' + JSON.stringify body
         error = err if err? and Object.keys(err).length > 0
 
@@ -457,13 +458,16 @@ notifyTarget = (user, rule,  callback) ->
 # Answer sent by the target
 module.exports.targetAnswer = (req, res, next) ->
     console.log 'answer : ' + JSON.stringify req.body.answer
+
     answer = req.body.answer
     if answer.accepted is yes
+        # The answer must contains {accepted, shareID, targetURL, pwd}
         console.log 'target is ok for sharing, lets go'
         # find doc by share id and user by userid
         # update accepted: yes
         # replicate
 
+    
         rule = getRuleById answer.shareID
         user =
             userID: answer.userID
