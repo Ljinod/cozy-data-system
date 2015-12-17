@@ -1,4 +1,3 @@
-plug = require './plug'
 db = require('../helpers/db_connect_helper').db_connect()
 async = require 'async'
 request = require 'request-json'
@@ -29,6 +28,7 @@ module.exports.evalInsert = (doc, id, callback) ->
             return callback err if err?
 
             # Serial loop, to avoid parallel db access
+            ###
             async.eachSeries mapResults, insertResults, (err) ->
                 return callback err if err?
 
@@ -43,6 +43,7 @@ module.exports.evalInsert = (doc, id, callback) ->
 
                     startShares acls, (err) ->
                         callback err
+            ###
 
 
 # Map the upated document against all the sharing rules
@@ -57,25 +58,17 @@ module.exports.evalUpdate = (id, isBinaryUpdate, callback) ->
             return callback err if err?
 
             console.log 'mapping results update : ' + JSON.stringify mapResults
-
+            ###
             selectInPlug id, (err, selectResults) ->
                 return callback err if err?
 
                 updateProcess id, mapResults, selectResults, isBinaryUpdate, (err, res) ->
                     callback err, res
-
-module.exports.evalDelete = (id, callback) ->
-    #Check if the id corresponds to a sharing Rule
-    rule = getRuleById id
-    console.log 'rule : ' + JSON.stringify rule
-    if rule?
-        rules.splice rules.indexOf rule, 1
-        console.log 'rule deleted'
-    callback()
-
+            ###
 
 # Insert the map result as a tuple in PlugDB, as a Doc and/or as a User
 # mapResult : {docID, userID, shareID, userParams}
+###
 insertResults = (mapResult, callback) ->
 
     console.log 'go insert docs'
@@ -194,7 +187,7 @@ selectInPlug = (id, callback) ->
         res = {doc: results[0], user: results[1]}
         #console.log 'tuples select : ' + JSON.stringify res if res?
         callback err, res
-
+###
 
 updateProcess = (id, mapResults, selectResults, isBinaryUpdate, callback) ->
 
@@ -330,7 +323,7 @@ matchAfterInsert = (mapResults, callback) ->
     else
         callback null
 
-
+###
 # Send the match command to PlugDB
 matching = (mapResult, callback) ->
 
@@ -363,7 +356,7 @@ matching = (mapResult, callback) ->
     # Add the shareID at the beginning
     # acl = Array.prototype.slice.call( acl )
     # acl.unshift mapResult.shareID
-
+###
 
 
 startShares = (acls, callback) ->
@@ -510,7 +503,7 @@ replicateDocs = (target, ids, callback) ->
     repSourceToTarget =
         source: "cozy"
         target: targetURL + "/cozy" # should be /replication but oh well... :(
-        continuous: true
+        #continuous: true
         doc_ids: ids
 
 
@@ -553,16 +546,7 @@ replicateDocs = (target, ids, callback) ->
         uri: sourceURL + "/_replicate"
     options['body'] = JSON.stringify repSourceToTarget
     request2 options, (err, res, body) ->
-        body = JSON.parse body
-        #err is sometimes empty, even if it has failed
-        if err? then callback err
-        else if not body.ok
-            callback body
-        else
-            console.log 'Replication from source suceeded \o/'
-            console.log JSON.stringify body
-            replicationID = body._local_id
-            callback err, replicationID
+        console.log JSON.stringify body
 
 
 # Update the sharing doc on the activeReplications field
@@ -717,7 +701,7 @@ getActiveTasks = (client, callback) ->
 
 
 # TODO : API to manage sharing rules
-
+###
 # Particular case at the doc evaluation where a new rule is inserted
 createRule = (doc, id, callback) ->
     plug.insertShare id, doc.name, (err) ->
@@ -725,14 +709,13 @@ createRule = (doc, id, callback) ->
             callback err
         else
             rule =
-                _id: id
+                id: id
                 name: doc.name
                 filterDoc: doc.filterDoc
                 filterUser: doc.filterUser
             saveRule rule
             console.log 'rule inserted'
             callback null
-
 
 module.exports.deleteRule = (doc, callback) ->
 module.exports.updateRule = (doc, callback) ->
@@ -747,6 +730,8 @@ module.exports.selectDocPlug = (id, callback) ->
 module.exports.selectUserPlug = (id, callback) ->
     plug.selectSingleUser id, (err, tuple) ->
         callback err, tuple
+###
+
 
 # Save the sharing rule in RAM and PlugDB
 saveRule = (rule, callback) ->
@@ -758,6 +743,7 @@ saveRule = (rule, callback) ->
 
     rules.push {id, name, filterDoc, filterUser, activeReplications}
 
+###
 module.exports.insertRules = (callback) ->
     insertShare = (rule, _callback) ->
         plug.insertShare rule.id, '', (err) ->
@@ -765,6 +751,7 @@ module.exports.insertRules = (callback) ->
     async.eachSeries rules, insertShare, (err) ->
         console.log 'rules inserted' unless err?
         callback err
+###
 
 # Called at the DS initialization
 # Note : for the moment a new rule implies a ds reboot to be evaluated
