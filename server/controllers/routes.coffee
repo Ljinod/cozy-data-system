@@ -12,7 +12,6 @@ account = require './accounts'
 access = require './access'
 replication = require './replication'
 sharing = require './sharing'
-plugdb = require './plugdb'
 
 utils = require '../middlewares/utils'
 
@@ -160,7 +159,7 @@ module.exports =
 
     'replication/*':
         'post': [
-            #utils.checkPermissionsPostReplication
+            utils.checkPermissionsPostReplication
             replication.proxy
         ]
         'get': [
@@ -168,7 +167,7 @@ module.exports =
             # Permissions manage in request
         ]
         'put':[
-            #utils.checkPermissionsPutReplication
+            utils.checkPermissionsPutReplication
             replication.proxy
         ]
 
@@ -226,4 +225,5 @@ module.exports =
     'accounts/': delete: [account.checkPermissions, account.deleteKeys]
 
     #Sharing management
-    'sharing/answer': post: sharing.answerRequest
+    'sharing/': post: [sharing.create, sharing.requestTarget]
+    'sharing/answer': post: [sharing.answerRequest, sharing.validate]
