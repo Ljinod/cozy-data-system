@@ -9,7 +9,7 @@ module.exports.create = (req, res, next) ->
         err.status = 400
         next err
     else
-        # get a hold on them
+        # get a hold on the information
         share = req.share
 
         # put the share document in the database
