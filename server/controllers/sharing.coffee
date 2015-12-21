@@ -1,25 +1,30 @@
 Sharing = require '../lib/sharing'
+<<<<<<< HEAD
 async = require 'async'
 access = require './access'
 
+=======
+>>>>>>> 993ed2f139c102be25efbf0aae3f0b616909590f
 db = require('../helpers/db_connect_helper').db_connect()
 
 # Creation of the sharing
 module.exports.create = (req, res, next) ->
-    ### TODO : create couchdb sharing doc
-        id
-        fDoc
-        fUser
-        desc
-        docids[]
-        targets[]
-        hostUrl
-        isSync
+    # check if the information is available
+    if not req.share?
+        err = new Error "Bad request"
+        err.status = 400
+        next err
+    else
+        # get a hold on the information
+        share = req.share
 
-    # pass the created share to the request
-    req.share = share
-    next()
-###
+        # put the share document in the database
+        db.save share, (err, res) ->
+            if err?
+                next err
+            else
+                next()
+
 
     #NOTE : only for test
     targets = [
