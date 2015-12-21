@@ -259,11 +259,17 @@ shareDocs = (user, ids, rule, callback) ->
 # Send a sharing request to a target
 module.exports.notifyTarget = (targetURL, params, callback) ->
     remote = request.newClient targetURL
-    remote.post "sharing/request", request: params, (err, res, body) ->
+    remote.post "sharing/request", request: params, (err, result, body) ->
         console.log 'body : ' + JSON.stringify body
-        error = err if err? and Object.keys(err).length > 0
+        callback err
 
-        callback error
+# Send a sharing answer to a host
+module.exports.answerHost = (hostURL, answer, callback) ->
+    remote = request.newClient hostURL
+    remote.post "sharing/answer", answer, (err, result, body) ->
+        console.log 'body : ' + JSON.stringify body
+        return callback err if err?
+        res.send 200, success: true
 
 # Answer sent by the target
 module.exports.targetAnswer = (req, res, next) ->
@@ -273,10 +279,13 @@ module.exports.targetAnswer = (req, res, next) ->
     if answer.accepted is yes
         # The answer must contains {accepted, shareID, targetURL, pwd}
         console.log 'target is ok for sharing, lets go'
+
+        next()
+
         # find doc by share id and user by userid
         # update accepted: yes
         # replicate
-
+        ###
         rule = getRuleById answer.shareID
         user =
             userID: answer.userID
@@ -289,12 +298,14 @@ module.exports.targetAnswer = (req, res, next) ->
     else
         bufferIds = []
         console.log 'target is not ok for sharing, drop it'
-
+    ###
+    else
+        res.send 200, success: true
 
 # Share the ids to the specifiedtarget
 # TODO : do not replicate like a fool on the remote open couchdb port
 # use the route https//cozy/dsApi/replication with credentials previously set
-replicateDocs = (couchUrl, target, ids, isContinuous, callback) ->
+module.exports.replicateDocs = (params, callback) ->
 
     console.log 'replicate ' + JSON.stringify ids
     console.log 'target : ' + target.url + ' - pwd : ' + target.pwd
@@ -303,7 +314,7 @@ replicateDocs = (couchUrl, target, ids, isContinuous, callback) ->
         err = new Error 'Parameters missing'
         err.status = 400
         callback err
-        
+
     repSourceToTarget =
         source: "cozy"
         target: target.url + "/cozy" # should be /replication but oh well... :(

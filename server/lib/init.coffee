@@ -7,7 +7,6 @@ async = require 'async'
 permissionsManager = require './token'
 thumb = require('./thumb')
 initTokens = require('./token').init
-plug = require('./plug')
 sharing = require('./sharing')
 
 
