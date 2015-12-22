@@ -22,21 +22,6 @@ module.exports.create = (req, res, next) ->
             else
                 next()
 
-
-    #NOTE : only for test
-    targets = [
-        {url: "http://localhost:9104/"}
-    ]
-    share =
-        id: "123456789"
-        desc: "blah"
-        sync: false
-        hostUrl: "http://localhost:9104/"
-        targets: targets
-
-    req.share = share
-    next()
-
 # Send a sharing request for each target defined in the share object
 module.exports.requestTarget = (req, res, next) ->
     if not req.share?
