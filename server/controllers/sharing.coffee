@@ -1,10 +1,7 @@
 Sharing = require '../lib/sharing'
-<<<<<<< HEAD
 async = require 'async'
 access = require './access'
 
-=======
->>>>>>> 993ed2f139c102be25efbf0aae3f0b616909590f
 db = require('../helpers/db_connect_helper').db_connect()
 
 # Creation of the sharing
