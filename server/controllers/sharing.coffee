@@ -22,6 +22,7 @@ module.exports.create = (req, res, next) ->
             else
                 next()
 
+
 # Send a sharing request for each target defined in the share object
 module.exports.requestTarget = (req, res, next) ->
     if not req.share?
@@ -43,12 +44,13 @@ module.exports.requestTarget = (req, res, next) ->
         , (err) ->
             return next err if err?
             res.send 200, success: true
-    
+
+
 # Create access if the sharing answer is yes, remove the UserSharing doc otherwise.
-# Send the answer to the host   
+# Send the answer to the host
 module.exports.sendAnswer = (req, res, next) ->
 
-    ### Params must contains : 
+    ### Params must contains :
     id (usersharing)
     shareID
     accepted
@@ -58,7 +60,7 @@ module.exports.sendAnswer = (req, res, next) ->
     ###
 
     params = req.params
-    answer = 
+    answer =
         params.shareID
         params.url
         params.accepted
@@ -75,6 +77,7 @@ module.exports.sendAnswer = (req, res, next) ->
         db.remove params.id, (err, res) ->
             return next err if err?
             Sharing.answerHost params.hostUrl, answer, next
+
 
 # Create an access for a user on a given share
 createUserAccess = (userSharing, callback) ->
@@ -123,7 +126,7 @@ module.exports.replicate = (req, res, next) ->
 
     # Replicate on the validated target
     if target.pwd?
-        params = 
+        params =
             url: target.url
             login: share.id
             pwd: target.url
