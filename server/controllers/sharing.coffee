@@ -58,10 +58,10 @@ module.exports.sendAnswer = (req, res, next) ->
     ###
 
     params = req.params
-    answer = 
-        params.shareID
-        params.url
-        params.accepted
+    answer =
+        shareID: params.shareID
+        url: params.url
+        accepted: params.accepted
 
     # Create an access is the sharing is accepted
     if answer.accepted is yes
@@ -85,7 +85,7 @@ createUserAccess = (userSharing, callback) ->
         app: userSharing.id
         permissions: userSharing.docIDs
 
-    access.create, access, (err, result, body) ->
+    access.create access, (err, result, body) ->
         return callback(err) if err?
         data =
             password: access.password
@@ -115,6 +115,7 @@ module.exports.validateTarget = (req, res, next) ->
     next()
 
     ###
+    next()
 
 module.exports.replicate = (req, res, next) ->
 
@@ -129,6 +130,9 @@ module.exports.replicate = (req, res, next) ->
             pwd: target.url
             docIDs: share.docIDs
             isSync: share.isSync
+
         Sharing.replicateDocs params, (err) ->
             return next err if err?
             res.send 200, success: true
+    else
+        res.send 200, success: true
