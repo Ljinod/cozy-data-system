@@ -175,27 +175,23 @@ module.exports.validateTarget = (req, res, next) ->
         # The target has accepted the request
         else
             # we add the password to the share document
-            shareDoc.pwd = req.answer.pwd
-
-            # we create a target structure for the replication function
-            req.target =
-                pwd: req.answer.pwd
-                url: req.answer.url
-
-            # we transmit the share document as well
-            req.share =
-                id: shareDoc.id
-                docIDs: shareDoc.docIDs
-                isSync: shareDoc.isSync
+            shareDoc.targets[target_index].pwd = req.answer.pwd
 
         # push the modification of the share document in the database and if
         # this operation was successful launch the replication!
         db.save shareDoc, (err, res) ->
             if err?
-                # XXX Do we need to create a special error and pass it to the
-                # next callback?
                 next err
             else
+                # we create a params structure for the replication function
+                req.params =
+                    pwd: req.answer.pwd
+                    url: req.answer.url
+                    id: shareDoc.id
+                    docIDs: shareDoc.docIDs
+                    isSync: shareDoc.isSync
+
+                # let's replicate
                 next()
 
 
