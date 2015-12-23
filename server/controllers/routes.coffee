@@ -226,5 +226,5 @@ module.exports =
 
     #Sharing management
     'sharing/': post: [sharing.create, sharing.requestTarget]
-    'sharing/sendAnswer': post: sharing.sendAnswer
+    'sharing/sendAnswer': post: [sharing.handleAnswer, sharing.sendAnswer]
     'sharing/answer': post: [sharing.validateTarget, sharing.replicate]

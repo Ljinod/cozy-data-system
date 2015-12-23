@@ -1,7 +1,7 @@
 Sharing = require '../lib/sharing'
 async = require 'async'
-accessCtl = require './access'
 
+addAccess = require('../lib/token').addAccess
 db = require('../helpers/db_connect_helper').db_connect()
 
 # Define random function for application's token
@@ -46,7 +46,7 @@ randomString = (length) ->
 #
 module.exports.create = (req, res, next) ->
     # get a hold on the information
-    share = req.body.share
+    share = req.body
     # check if the information is available
     if not share?
         err = new Error "Bad request"
@@ -95,8 +95,8 @@ module.exports.requestTarget = (req, res, next) ->
 
 
 # Create access if the sharing answer is yes, remove the UserSharing doc otherwise.
-# Send the answer to the host
-module.exports.sendAnswer = (req, res, next) ->
+
+module.exports.handleAnswer = (req, res, next) ->
 
     ### Params must contains :
     id (usersharing)
@@ -107,80 +107,57 @@ module.exports.sendAnswer = (req, res, next) ->
     hostUrl
     ###
 
-    if not req.body.params?
+
+    if not req.body?
         err = new Error "Bad request"
         err.status = 400
         next err
-
-    params = req.body.params
-    console.log 'answer : ' + JSON.stringify params
-
-    answer =
-        shareID: params.shareID
-        url: params.url
-        accepted: params.accepted
-
+    params = req.body
 
     # Create an access is the sharing is accepted
-    if answer.accepted is yes
+    if params.accepted is yes
         access =
             login: params.shareID
             password: randomString 32
-            app: params.id
+            id: params.id
             permissions: params.docIDs
-        req.body = access
 
-        accessCtl.create req, res, (err, result, body) ->
-            return callback(err) if err?
-            answer.pwd = access.password
-            console.log 'body access : ' + JSON.stringify body
-            answerHost hostUrl, answer, (err) ->
-                return next err if err?
-
+        addAccess access, (err, doc) ->
+            return next err if err?
+            
+            params.pwd = access.password
+            req.params = params
+            next()           
 
     # Delete the associated doc if the sharing is refused
     else
-        db.remove params.id, (err, res) ->
+        db.remove req.params.id, (err, res) ->
             return next err if err?
-            answerHost hostUrl, answer, (err) ->
-                return next err if err?
+            req.params = params
+            next()
 
+# Send the answer to the host
+module.exports.sendAnswer = (req, res, next) ->
+    console.log 'params ' + JSON.stringify req.params 
 
-answerHost = (hostUrl, answer, callback) ->
-    console.log 'answer ' + answer.accepted 
-    Sharing.answerHost params.hostUrl, answer, (err, result, body) ->
+    answer = 
+        shareID: req.params.shareID
+        url: req.params.url
+        accepted: req.params.accepted
+        pwd: req.params.pwd
+
+    Sharing.answerHost req.params.hostUrl, answer, (err, result, body) ->
         if err? 
-            callback err
+            next err
         else if not result?.statusCode?
             err = new Error "Bad request"
             err.status = 400
-            callback err
+            next err
         else
             console.log 'body : ' + JSON.stringify body
             res.send result.statusCode, body
-            callback()
 
-test = (req, res) ->
-    console.log 'test'
-    
-# Create an access for a user on a given share
-createUserAccess = (req, res, callback) ->
 
-    access =
-        login: userSharing.shareID
-        password: randomString 32
-        app: userSharing.id
-        permissions: userSharing.docIDs
-    req.access = access
-
-    accessCtl.create req, res, (err, result, body) ->
-        return callback(err) if err?
-        data =
-            password: access.password
-            login: userSharing.shareID
-            permissions: access.permissions
-        # Return access to user
-        callback null, data
 
 
 # Process the answer given by the target regarding the sharing request that was
@@ -195,7 +172,10 @@ createUserAccess = (req, res, callback) ->
 # }
 #
 module.exports.validateTarget = (req, res, next) ->
-    if not req.answer?
+    console.log 'answer : ' + JSON.stringify req.body
+    
+    answer = req.body
+    if not answer?
         # send an error explaining that the answer received has not the
         # expected format or just isn't there
         err = new Error "Bad request"
@@ -205,62 +185,64 @@ module.exports.validateTarget = (req, res, next) ->
     else
         # we get a hold on the share document stored in the database that
         # represents this sharing process
-        shareDoc = db.get req.answer.shareID, (err, doc) ->
-            if err?
+        db.get answer.shareID, (err, doc) ->
+            return next err if err?
+            console.log 'share doc : ' + JSON.stringify doc
+
+            # we get the index of the current target in the array containing all
+            # the targets of the sharing process
+            target_index = doc.targets.indexOf answer.url
+            if target_index > -1
+                err = new Error answer.url + " not found for this sharing"
+                err.status = 404
                 next err
             else
-                return doc
+                # Then we check if the target has accepted the request
+                # Add the password to the share document if accepted
+                # Remove the target otherwise        
+                if answer.accepted            
+                    doc.targets[target_index].pwd = answer.pwd
+                else
+                    doc.targets.splice target_index, 1
 
-        # we get the index of the current target in the array containing all
-        # the targets of the sharing process
-        target_index = shareDoc.targets.indexOf req.target
-        if target_index > -1
-            err = new Error "Document was not found in database"
-            err.status = 404
+                db.merge doc._id, doc, (err, res) ->
+                    return next err if err?
+                    
+                    # we create a params structure for the replication function
+                    params =
+                        pwd: answer.pwd
+                        url: answer.url
+                        id: doc._id
+                        docIDs: doc.docIDs
+                        sync: doc.isSync
+
+                    req.params = params
+                    next()
+
+
+module.exports.update = (req, res, next) ->
+    # push the modification of the share document in the database and if
+    # this operation was successful launch the replication!
+    db.merge req.doc._id, req.doc, (err, res) ->
+        if err?
             next err
-
-        # Then we check if the target has accepted the request
-        # ...or not: if the target has not then we remove his entry from the
-        # array containing all the targets for the sharing process
-        if !req.answer.accepted
-            shareDoc.targets.splice target_index, 1
-
-        # The target has accepted the request
         else
-            # we add the password to the share document
-            shareDoc.targets[target_index].pwd = req.answer.pwd
+            # we create a params structure for the replication function
+            params =
+                pwd: req.answer.pwd
+                url: req.answer.url
+                id: shareDoc.id
+                docIDs: shareDoc.docIDs
+                isSync: shareDoc.isSync
 
-        # push the modification of the share document in the database and if
-        # this operation was successful launch the replication!
-        db.save shareDoc, (err, res) ->
-            if err?
-                next err
-            else
-                # we create a params structure for the replication function
-                req.params =
-                    pwd: req.answer.pwd
-                    url: req.answer.url
-                    id: shareDoc.id
-                    docIDs: shareDoc.docIDs
-                    isSync: shareDoc.isSync
 
-                # let's replicate
-                next()
+            next()
+
 
 module.exports.replicate = (req, res, next) ->
-
-    share = req.share
-    target = req.target
-
+    params = req.params
     # Replicate on the validated target
-    if target.pwd?
-        params =
-            url: target.url
-            login: share.id
-            pwd: target.url
-            docIDs: share.docIDs
-            isSync: share.isSync
-
+    if params.pwd?
         Sharing.replicateDocs params, (err) ->
             return next err if err?
             res.send 200, success: true
