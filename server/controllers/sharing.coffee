@@ -1,8 +1,15 @@
 Sharing = require '../lib/sharing'
 async = require 'async'
-access = require './access'
+accessCtl = require './access'
 
 db = require('../helpers/db_connect_helper').db_connect()
+
+# Define random function for application's token
+randomString = (length) ->
+    string = ""
+    while (string.length < length)
+        string = string + Math.random().toString(36).substr(2)
+    return string.substr 0, length
 
 # --- Creation of the share document.
 # The share document is a document that represents the sharing process that was
@@ -38,20 +45,21 @@ db = require('../helpers/db_connect_helper').db_connect()
 # fields filled as needed.
 #
 module.exports.create = (req, res, next) ->
+    # get a hold on the information
+    share = req.body.share
     # check if the information is available
-    if not req.share?
+    if not share?
         err = new Error "Bad request"
         err.status = 400
         next err
     else
-        # get a hold on the information
-        share = req.share
-
         # put the share document in the database
         db.save share, (err, res) ->
             if err?
                 next err
             else
+                share.id = res._id
+                req.share = share
                 next()
 
 
@@ -63,19 +71,27 @@ module.exports.requestTarget = (req, res, next) ->
         next err
     else
         share = req.share
-        params =
+        request =
             shareID: share.id
             desc: share.desc
-            sync: share.isSync
+            sync: share.sync
             hostUrl: share.hostUrl
 
         # Notify each target
         async.each share.targets, (target, callback) ->
-             Sharing.notifyTarget target.url, params, (err) ->
-                callback err
+             Sharing.notifyTarget target.url, request, (err, result, body) ->
+                if err?
+                    callback err
+                else if not result?.statusCode?
+                    err = new Error "Bad request"
+                    err.status = 400
+                    callback err
+                else
+                    res.send result.statusCode, body
+                    callback()
+
         , (err) ->
             return next err if err?
-            res.send 200, success: true
 
 
 # Create access if the sharing answer is yes, remove the UserSharing doc otherwise.
@@ -91,7 +107,14 @@ module.exports.sendAnswer = (req, res, next) ->
     hostUrl
     ###
 
-    params = req.params
+    if not req.body.params?
+        err = new Error "Bad request"
+        err.status = 400
+        next err
+
+    params = req.body.params
+    console.log 'answer : ' + JSON.stringify params
+
     answer =
         shareID: params.shareID
         url: params.url
@@ -100,28 +123,57 @@ module.exports.sendAnswer = (req, res, next) ->
 
     # Create an access is the sharing is accepted
     if answer.accepted is yes
-        createUserAccess params, (err, data) ->
-            return next err if err?
+        access =
+            login: params.shareID
+            password: randomString 32
+            app: params.id
+            permissions: params.docIDs
+        req.body = access
 
-            answer.pwd = data.password
-            Sharing.answerHost params.hostUrl, answer, next
+        accessCtl.create req, res, (err, result, body) ->
+            return callback(err) if err?
+            answer.pwd = access.password
+            console.log 'body access : ' + JSON.stringify body
+            answerHost hostUrl, answer, (err) ->
+                return next err if err?
+
+
     # Delete the associated doc if the sharing is refused
     else
         db.remove params.id, (err, res) ->
             return next err if err?
-            Sharing.answerHost params.hostUrl, answer, next
+            answerHost hostUrl, answer, (err) ->
+                return next err if err?
 
 
+answerHost = (hostUrl, answer, callback) ->
+    console.log 'answer ' + answer.accepted 
+    Sharing.answerHost params.hostUrl, answer, (err, result, body) ->
+        if err? 
+            callback err
+        else if not result?.statusCode?
+            err = new Error "Bad request"
+            err.status = 400
+            callback err
+        else
+            console.log 'body : ' + JSON.stringify body
+            res.send result.statusCode, body
+            callback()
+
+test = (req, res) ->
+    console.log 'test'
+    
 # Create an access for a user on a given share
-createUserAccess = (userSharing, callback) ->
+createUserAccess = (req, res, callback) ->
 
     access =
         login: userSharing.shareID
         password: randomString 32
         app: userSharing.id
         permissions: userSharing.docIDs
+    req.access = access
 
-    access.create access, (err, result, body) ->
+    accessCtl.create req, res, (err, result, body) ->
         return callback(err) if err?
         data =
             password: access.password

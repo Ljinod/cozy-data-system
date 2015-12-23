@@ -261,15 +261,15 @@ module.exports.notifyTarget = (targetURL, params, callback) ->
     remote = request.newClient targetURL
     remote.post "sharing/request", request: params, (err, result, body) ->
         console.log 'body : ' + JSON.stringify body
-        callback err
+        callback err, result, body
 
 # Send a sharing answer to a host
 module.exports.answerHost = (hostURL, answer, callback) ->
     remote = request.newClient hostURL
     remote.post "sharing/answer", answer, (err, result, body) ->
         console.log 'body : ' + JSON.stringify body
-        return callback err if err?
-        res.send 200, success: true
+        callback err, result, body
+
 
 # Answer sent by the target
 module.exports.targetAnswer = (req, res, next) ->
