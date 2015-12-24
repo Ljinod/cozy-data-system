@@ -71,27 +71,33 @@ module.exports.requestTarget = (req, res, next) ->
         next err
     else
         share = req.share
-        request =
-            shareID: share.id
-            desc: share.desc
-            sync: share.sync
-            hostUrl: share.hostUrl
+        Sharing.getDomain (err, domain) ->
+            if err?
+                next new Error 'No instance domain set'
+            else
+                request =
+                    shareID: share.id
+                    desc: share.desc
+                    sync: share.sync
+                    hostUrl: domain
+                console.log 'request : ' + JSON.stringify request
 
-        # Notify each target
-        async.each share.targets, (target, callback) ->
-             Sharing.notifyTarget target.url, request, (err, result, body) ->
-                if err?
-                    callback err
-                else if not result?.statusCode?
-                    err = new Error "Bad request"
-                    err.status = 400
-                    callback err
-                else
-                    res.send result.statusCode, body
-                    callback()
+                # Notify each target
+                async.each share.targets, (target, callback) ->
+                    request.url = target.url
+                    Sharing.notifyTarget target.url, request, (err, result, body) ->
+                        if err?
+                            callback err
+                        else if not result?.statusCode?
+                            err = new Error "Bad request"
+                            err.status = 400
+                            callback err
+                        else
+                            res.send result.statusCode, body
+                            callback()
 
-        , (err) ->
-            return next err if err?
+                , (err) ->
+                    return next err if err?
 
 
 # Create access if the sharing answer is yes, remove the UserSharing doc otherwise.
@@ -138,25 +144,30 @@ module.exports.handleAnswer = (req, res, next) ->
 
 # Send the answer to the host
 module.exports.sendAnswer = (req, res, next) ->
+    
     console.log 'params ' + JSON.stringify req.params 
+    
+    params = req.body    
+    if not params?
+        err = new Error "Bad request"
+        err.status = 400
+        next err
+    else
+        answer = 
+            shareID: params.shareID
+            url: params.url
+            accepted: params.accepted
+            pwd: params.pwd
 
-    answer = 
-        shareID: req.params.shareID
-        url: req.params.url
-        accepted: req.params.accepted
-        pwd: req.params.pwd
-
-    Sharing.answerHost req.params.hostUrl, answer, (err, result, body) ->
-        if err? 
-            next err
-        else if not result?.statusCode?
-            err = new Error "Bad request"
-            err.status = 400
-            next err
-        else
-            console.log 'body : ' + JSON.stringify body
-            res.send result.statusCode, body
-
+        Sharing.answerHost params.hostUrl, answer, (err, result, body) ->
+            if err? 
+                next err
+            else if not result?.statusCode?
+                err = new Error "Bad request"
+                err.status = 400
+                next err
+            else
+                res.send result.statusCode, body
 
 
 
@@ -189,35 +200,37 @@ module.exports.validateTarget = (req, res, next) ->
             return next err if err?
             console.log 'share doc : ' + JSON.stringify doc
 
-            # we get the index of the current target in the array containing all
-            # the targets of the sharing process
-            target_index = doc.targets.indexOf answer.url
-            if target_index > -1
+            # Get the answering target
+            target = t for t in doc.targets when t.url = answer.url
+            if not target?
                 err = new Error answer.url + " not found for this sharing"
                 err.status = 404
                 next err
             else
-                # Then we check if the target has accepted the request
-                # Add the password to the share document if accepted
+                # Check if the target has accepted the request
+                # Add the password to the target if accepted
                 # Remove the target otherwise        
                 if answer.accepted            
-                    doc.targets[target_index].pwd = answer.pwd
+                    target.pwd = answer.pwd
                 else
-                    doc.targets.splice target_index, 1
+                    i = doc.targets.indexOf target
+                    doc.targets.splice i, 1
 
+                # Update db
                 db.merge doc._id, doc, (err, res) ->
                     return next err if err?
                     
-                    # we create a params structure for the replication function
+                    # Params structure for the replication function
                     params =
                         pwd: answer.pwd
                         url: answer.url
                         id: doc._id
                         docIDs: doc.docIDs
-                        sync: doc.isSync
+                        sync: doc.sync
 
                     req.params = params
                     next()
+
 
 
 module.exports.update = (req, res, next) ->
@@ -233,7 +246,7 @@ module.exports.update = (req, res, next) ->
                 url: req.answer.url
                 id: shareDoc.id
                 docIDs: shareDoc.docIDs
-                isSync: shareDoc.isSync
+                sync: shareDoc.isSync
 
 
             next()
@@ -243,8 +256,16 @@ module.exports.replicate = (req, res, next) ->
     params = req.params
     # Replicate on the validated target
     if params.pwd?
-        Sharing.replicateDocs params, (err) ->
-            return next err if err?
-            res.send 200, success: true
+        Sharing.replicateDocs params, (err, repID) ->
+            if err?
+                next err
+            else if not repID?
+                err = new Error "Replication failed"
+                err.status = 500
+                next err
+            #TODO : update the db
+            if repID?
+                res.send 200, success: true
+
     else
         res.send 200, success: true

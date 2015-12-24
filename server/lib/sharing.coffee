@@ -10,6 +10,22 @@ rules = []
 # Temporary : keep in memory the ids for the sharing
 bufferIds = []
 
+dbHost = db.connection.host
+dbPort = db.connection.port
+dbUrl = "http://#{dbHost}:#{dbPort}"
+
+module.exports.getDomain = (callback) ->
+    db.view 'cozyinstance/all', (err, instance) ->
+        return callback err if err?
+
+        if instance?[0]?.value.domain?
+            domain = instance[0].value.domain
+            if not domain.indexOf 'http' > -1
+                console.log 'domain : ' + domain
+                domain = "https://#{domain}/"
+            callback null, domain
+        else
+            callback null
 
 # Map the inserted document against all the sharing rules
 # If one or several mapping are trigerred, the result {id, shareID, userParams}
@@ -259,7 +275,7 @@ shareDocs = (user, ids, rule, callback) ->
 # Send a sharing request to a target
 module.exports.notifyTarget = (targetURL, params, callback) ->
     remote = request.newClient targetURL
-    remote.post "sharing/request", request: params, (err, result, body) ->
+    remote.post "sharing/request", params, (err, result, body) ->
         console.log 'body : ' + JSON.stringify body
         callback err, result, body
 
@@ -307,27 +323,26 @@ module.exports.targetAnswer = (req, res, next) ->
 # use the route https//cozy/dsApi/replication with credentials previously set
 module.exports.replicateDocs = (params, callback) ->
 
-    console.log 'replicate ' + JSON.stringify ids
-    console.log 'target : ' + target.url + ' - pwd : ' + target.pwd
+    console.log 'params : ' + JSON.stringify params
 
-    unless couchUrl? and target.url? and target.pwd? and ids? and isContinuous?
+    unless params.url? and params.pwd? and params.docIDs?
         err = new Error 'Parameters missing'
         err.status = 400
         callback err
 
     repSourceToTarget =
         source: "cozy"
-        target: target.url + "/cozy" # should be /replication but oh well... :(
-        continuous: isContinuous
-        doc_ids: ids
+        target: params.url + "/replication" # should be /replication but oh well... :(
+        continuous: params.sync or false
+        doc_ids: params.docIDs
 
     # For bilateral sync; should be initiated by the target
-    repTargetToSource =
+    ###repTargetToSource =
         source: "cozy"
         target: sourceURL
         continuous: true
         doc_ids: ids
-
+    ###
     console.log 'rep data : ' + JSON.stringify repSourceToTarget
 
     headers =
@@ -335,18 +350,18 @@ module.exports.replicateDocs = (params, callback) ->
     options =
         method: 'POST'
         headers: headers
-        uri: sourceUrl + "/_replicate"
+        uri: dbUrl + "/_replicate"
     options['body'] = JSON.stringify repSourceToTarget
 
     request2 options, (err, res, body) ->
         if err? then callback err
         else if not body.ok
             console.log JSON.stringify body
-            callback body
+            callback null, body
         else
             console.log 'Replication from source succeeded \o/'
-            replicationID = body._local_id
-            callback null, replicationID
+            repID = body._local_id
+            callback null, repID
 
 # Update the sharing doc on the activeReplications field
 updateActiveRep = (shareID, activeReplications, callback) ->
