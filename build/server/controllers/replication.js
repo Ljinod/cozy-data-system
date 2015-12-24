@@ -99,17 +99,13 @@ requestOptions = function(req) {
 
 module.exports.proxy = function(req, res, next) {
   var couchReq, data, err, options, permissions, ref, stream;
-  console.log('hop');
   ref = requestOptions(req), err = ref[0], options = ref[1];
-  console.log('err request: ' + JSON.stringify(err));
-  console.log('contact couch with options : ' + JSON.stringify(options));
   if (err != null) {
     return res.send(403, err);
   }
   stream = through();
   couchReq = request(options).on('response', function(response) {
     var data, headers, permissions;
-    console.log('response : ' + JSON.stringify(response));
     headers = couchDBHeaders(response.headers);
     res.set(headers);
     res.statusCode = response.statusCode;
@@ -117,7 +113,6 @@ module.exports.proxy = function(req, res, next) {
     permissions = false;
     response.on('data', function(chunk) {
       var content, doc, ref1;
-      console.log('data : ' + JSON.stringify(chunk));
       if (req.method === 'GET') {
         if (permissions) {
           return res.write(chunk);
@@ -133,7 +128,6 @@ module.exports.proxy = function(req, res, next) {
           }
           if (doc) {
             err = checkPermissions(req, doc.docType);
-            console.log('error? : ' + JSON.stringify(err));
             if (err) {
               res.send(403, err);
               return couchReq.end();
@@ -148,11 +142,9 @@ module.exports.proxy = function(req, res, next) {
       }
     });
     return response.on('end', function() {
-      console.log('end');
       return res.end();
     });
   }).on('error', function(err) {
-    console.log('error : ' + JSON.stringify(err));
     return res.send(500, err);
   });
   stream.pipe(couchReq);
@@ -161,17 +153,14 @@ module.exports.proxy = function(req, res, next) {
   req.on('data', (function(_this) {
     return function(chunk) {
       var doc, ref1;
-      console.log('data from supposed device');
       if (permissions) {
         return stream.emit('data', chunk);
       } else {
         data.push(chunk);
         ref1 = retrieveJsonDocument(Buffer.concat(data).toString()), err = ref1[0], doc = ref1[1];
-        console.log('err : ' + JSON.stringify(err + ' - doc : ' + JSON.stringify(doc)));
         if (!err) {
           err = checkPermissions(req, doc.docType);
           if (err) {
-            console.log('kaboum, not autorized : ' + JSON.stringify(err));
             res.send(403, err);
             stream.emit('end');
             couchReq.end();
