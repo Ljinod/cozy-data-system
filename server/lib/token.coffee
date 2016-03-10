@@ -151,7 +151,9 @@ addAccess = module.exports.addAccess = (doc, callback) ->
         app: doc.id or doc._id
         permissions: doc.permissions
     db.save access, (err, doc) ->
-        log.error err if err?
+        if err?
+            log.error err
+            callback err if callback?
         # Update permissions in RAM
         updatePermissions access, () ->
             callback null, access if callback?
