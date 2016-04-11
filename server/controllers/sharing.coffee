@@ -120,6 +120,7 @@ module.exports.delete = (req, res, next) ->
 #                 and a preToken
 module.exports.sendSharingRequests = (req, res, next) ->
 
+    console.log "DEBUG: 131"
     share = req.share
 
     # Notify each target
