@@ -129,7 +129,7 @@ module.exports.cancelReplication = (replicationID, callback) ->
             if err?
                 callback err
             else if not body.ok
-                err = "Cancel replication failed"
+                err = new Error "Cancel replication failed"
                 callback err
             else
                 callback()

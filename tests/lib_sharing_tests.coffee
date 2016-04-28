@@ -254,7 +254,7 @@ describe 'Lib sharing: ', ->
                 err.should.deep.equal error
                 done()
 
-        it 'should send the notification to the recipient', (done) ->
+        it 'should send the notification to the sharer', (done) ->
             checkDomainStub() # cancel stub
 
             Sharing.notifySharer 'path', params, (err) ->
@@ -358,13 +358,74 @@ describe 'Lib sharing: ', ->
 
         it 'should return an error when the replication fails i.e. `body.ok` is
         false', (done) ->
-            dbReplicateStub.restore() # cancel default stub
+            dbReplicateStub.restore() # cancel previous stub
             replicationError = new Error "Replication failed"
             dbReplicateStub = sinon.stub db, 'replicate',
                 (target, replication, callback) ->
                     callback null, {ok: false, _local_id: -1}
 
             Sharing.replicateDocs params, (err) ->
+                err.should.deep.equal replicationError
+                done()
+
+
+    describe 'cancelReplication module', ->
+
+        # parameter required by the module
+        replicationID = 'replicationID'
+
+        # stub and hooks
+        dbReplicateStub = {}
+
+        before (done) ->
+            dbReplicateStub = sinon.stub db, "replicate",
+                (target, cancel, callback) ->
+                    cancel.replication_id.should.deep.equal replicationID
+                    cancel.cancel.should.be.true
+                    target.should.be.empty
+                    # mimicks a successful cancel
+                    callback null, {ok: true}
+            done()
+
+        after (done) ->
+            dbReplicateStub.restore()
+            done()
+
+        it 'should return an error when the replicationID is missing', (done) ->
+            error        = new Error "Parameters missing"
+            error.status = 400
+
+            Sharing.cancelReplication null, (err) ->
+                err.should.deep.equal error
+                done()
+
+        it 'should send the correct cancel structure', (done) ->
+            Sharing.cancelReplication replicationID, (err) ->
+                # nothing to do: tests are defined in the stub
+                done()
+
+        it 'should return an error when `db.replicate` fails', (done) ->
+            dbReplicateStub.restore() # cancel hook stub
+            dbReplicateError = new Error 'db.replicate'
+            # replace stub
+            dbReplicateStub  = sinon.stub db, "replicate",
+                (target, cancel, callback) ->
+                    callback dbReplicateError, null
+
+            Sharing.cancelReplication replicationID, (err) ->
+                err.should.deep.equal dbReplicateError
+                done()
+
+        it 'should return an error when the cancel fails i.e. `body.ok` is
+        false', (done) ->
+            dbReplicateStub.restore() # cancel previous stub
+            replicationError = new Error 'Cancel replication failed'
+            # replace stub
+            dbReplicateStub  = sinon.stub db, "replicate",
+                (target, cancel, callback) ->
+                    callback null, {ok: false}
+
+            Sharing.cancelReplication replicationID, (err) ->
                 err.should.deep.equal replicationError
                 done()
 
