@@ -120,3 +120,57 @@ describe 'Lib sharing: ', ->
                 url.should.deep.equal predefined_url
                 done()
 
+
+    describe 'handleNotifyResponse module', ->
+
+        handleNotifyResponse = Sharing.__get__ 'handleNotifyResponse'
+
+        it 'should return the error when it exists', (done) ->
+            error = new Error "Sharing.handleNotifyResponse"
+            handleNotifyResponse error, null, null, (err) ->
+                err.should.deep.equal error
+                done()
+
+        it 'should return an error when result does not exist', (done) ->
+            expected_error        = new Error "Bad request"
+            expected_error.status = 400
+
+            handleNotifyResponse null, null, {data: 'data'}, (err) ->
+                err.should.deep.equal expected_error
+                done()
+
+        it 'should return an error when result.statusCode does not exist',
+        (done) ->
+            expected_error        = new Error "Bad request"
+            expected_error.status = 400
+
+            handleNotifyResponse null, {status: 'failure'}, {data: 'data'},
+            (err) ->
+                err.should.deep.equal expected_error
+                done()
+
+        it 'should return an error when body.error exists', (done) ->
+            body = {error: 'Resource not found'}
+
+            handleNotifyResponse null, {statusCode: 404}, body, (err) ->
+                err.should.equal body
+                err.error.should.deep.equal body.error
+                err.status.should.equal 404
+                done()
+
+        it 'should return an error when result.statusCode does not equal 200',
+        (done) ->
+            expected_error        = new Error "The request has failed"
+            expected_error.status = 302
+
+            handleNotifyResponse null, {statusCode: 302}, {data: 'data'},
+            (err) ->
+                err.should.deep.equal expected_error
+                done()
+
+        it 'should call the callback when none of the above occurred', (done) ->
+            handleNotifyResponse null, {statusCode: 200}, {data: 'data'},
+            (err) ->
+                should.not.exist err
+                done()
+
