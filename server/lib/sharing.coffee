@@ -1,5 +1,6 @@
 db = require('../helpers/db_connect_helper').db_connect()
 replicator = require('../helpers/db_connect_helper').db_replicator_connect()
+utils = require '../helpers/utils'
 async = require 'async'
 request = require 'request-json'
 log = require('printit')
@@ -79,7 +80,8 @@ handleNotifyResponse = (err, result, body, callback) ->
 module.exports.notifyRecipient = (url, path, params, callback) ->
     # Get the domain if not already set
     checkDomain params.sharerUrl, (err, domain) ->
-        return err if err?
+        return callback err if err?
+
         params.sharerUrl = domain
 
         # Get the user name
@@ -101,7 +103,7 @@ module.exports.notifyRecipient = (url, path, params, callback) ->
 module.exports.notifySharer = (url, path, params, callback) ->
     # Get the domain if not already set
     checkDomain params.recipientUrl, (err, domain) ->
-        return err if err?
+        return callback err if err?
 
         params.recipientUrl = domain
         remote = request.createClient url
@@ -123,7 +125,7 @@ module.exports.sendRevocation = (url, path, params, callback) ->
 #   docIDs     -> the ids of the documents to replicate
 #   continuous -> [optionnal] if the sharing is synchronous or not
 module.exports.replicateDocs = (params, callback) ->
-    unless params.target? and params.docIDs? and params.id?
+    if utils.hasEmptyField params, ["target", "docIDs", "id"]
         err = new Error 'Parameters missing'
         err.status = 400
         callback err
@@ -145,7 +147,6 @@ module.exports.replicateDocs = (params, callback) ->
             target: url + "/services/sharing/replication/"
             continuous: params.continuous or false
             doc_ids: params.docIDs
-
 
         # When a continuous replication is triggered, it must be saved in the
         # _relicator db to retrieve the connection even after a restart
