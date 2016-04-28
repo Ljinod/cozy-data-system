@@ -189,3 +189,12 @@ changes = replicator.changes since: 'now'
 changes.on 'change', onChange
 changes.on 'error', (err) ->
     log.error "Replicator feed error : #{err.stack}"
+        db.replicate '', cancel, (err, body) ->
+            if err?
+                callback err
+            else if not body.ok
+                err = new Error "Cancel replication failed"
+                callback err
+            else
+                callback()
+
