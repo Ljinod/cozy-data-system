@@ -32,7 +32,7 @@ getDomain = (callback) ->
     db.view 'cozyinstance/all', (err, instance) ->
         return callback err if err?
 
-        if instance?[0]?.value.domain?
+        if instance?[0]?.value?.domain?
             domain = instance[0].value.domain
             domain = "https://#{domain}/" if not (domain.indexOf('http') > -1)
             callback null, domain
