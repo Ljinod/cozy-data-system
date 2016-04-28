@@ -1,4 +1,5 @@
 db = require('../helpers/db_connect_helper').db_connect()
+utils = require '../helpers/utils'
 async = require 'async'
 request = require 'request-json'
 log = require('printit')
@@ -58,7 +59,7 @@ handleNotifyResponse = (err, result, body, callback) ->
 module.exports.notifyRecipient = (path, params, callback) ->
     # Get the domain if not already set
     checkDomain params.sharerUrl, (err, domain) ->
-        return err if err?
+        return callback err if err?
 
         params.sharerUrl = domain
         remote = request.createClient params.recipientUrl
@@ -73,7 +74,7 @@ module.exports.notifyRecipient = (path, params, callback) ->
 module.exports.notifySharer = (path, params, callback) ->
     # Get the domain if not already set
     checkDomain params.recipientUrl, (err, domain) ->
-        return err if err?
+        return callback err if err?
 
         params.recipientUrl = domain
         remote = request.createClient params.sharerUrl
@@ -88,7 +89,7 @@ module.exports.notifySharer = (path, params, callback) ->
 #   docIDs     -> the ids of the documents to replicate
 #   continuous -> [optionnal] if the sharing is synchronous or not
 module.exports.replicateDocs = (params, callback) ->
-    unless params.target? and params.docIDs? and params.id?
+    if utils.hasEmptyField params, ["target", "docIDs", "id"]
         err = new Error 'Parameters missing'
         err.status = 400
         callback err
@@ -106,7 +107,7 @@ module.exports.replicateDocs = (params, callback) ->
         db.replicate replication.target, replication, (err, body) ->
             if err? then callback err
             else if not body.ok
-                err = "Replication failed"
+                err = new Error "Replication failed"
                 callback err
             else
                 # The _local_id field is returned only if continuous
