@@ -4,9 +4,9 @@ fs  = require 'fs'
 log = require('printit')
     prefix: 'token'
 
-permissions = {}
-tokens = {}
-sharingTokens = {}
+permissions        = {}
+tokens             = {}
+sharingTokens      = {}
 sharingPermissions = {}
 
 productionOrTest = process.env.NODE_ENV in ['production', 'test']
@@ -20,8 +20,8 @@ productionOrTest = process.env.NODE_ENV in ['production', 'test']
 checkToken = module.exports.checkToken = (auth, tokensTab) ->
     if auth isnt "undefined" and auth?
         # Default case for tokens
-        #unless tokensTab? then tokensTab = tokens
         tokensTab ?= tokens
+
         # Recover username and password in field authorization
         auth = auth.substr(5, auth.length - 1)
         auth = new Buffer(auth, 'base64').toString('ascii')
@@ -73,9 +73,9 @@ module.exports.checkDocType = (auth, docType, callback) ->
 ## Check if application can manage docType
 module.exports.checkDocTypeSync = (auth, docType) ->
     # Check if application is authenticated
+    [err, isAuthenticated, name] = checkToken auth, tokens
 
     if productionOrTest
-        [err, isAuthenticated, name] = checkToken auth, tokens
         if isAuthenticated
             if docType?
                 docType = docType.toLowerCase()
@@ -91,7 +91,6 @@ module.exports.checkDocTypeSync = (auth, docType) ->
         else
             return [null, false, false]
     else
-        [err, isAuthenticated, name] = checkToken auth, tokens
         name ?= 'unknown'
         return [null, name, true]
 
