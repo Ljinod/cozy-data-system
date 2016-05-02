@@ -25,7 +25,10 @@ checkDomain = (url, callback) ->
         # Get the cozy url to let the target knows who is the sender
         getDomain (err, domain) ->
             if err? or not domain?
-                callback new Error 'No instance domain set'
+                if process.env.NODE_ENV is 'test'
+                    callback null, 'cozy-test'
+                else
+                    callback new Error 'No instance domain set'
             else
                 callback err, domain
     else

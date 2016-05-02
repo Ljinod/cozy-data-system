@@ -131,8 +131,6 @@ module.exports.sendSharingRequests = (req, res, next) ->
             rules       : share.rules
             desc        : share.desc
 
-        log.info "Send sharing request to : #{request.recipientUrl}"
-
         Sharing.notifyRecipient "services/sharing/request", request, callback
 
     , (err) ->
