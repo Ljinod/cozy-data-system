@@ -55,6 +55,21 @@ saveErrorInTarget = (error, id, target, callback) ->
         callback()
 
 
+
+# Add a shareID field for each doc specified in the sharing rules
+addShareIDnDocs = (rules, shareID, callback) ->
+    async.eachSeries rules, (rule, cb) ->
+        db.get rule.id, (err, doc) ->
+            if err?
+                cb err
+            else
+                doc.shareID = shareID
+                db.merge rule.id, doc, (err, result) ->
+                    cb err
+    , (err) ->
+        callback err
+
+
 # Creation of the Sharing document
 #
 # The structure of a Sharing document is as following.
@@ -314,6 +329,8 @@ module.exports.sendRevocationToSharer = (req, res, next) ->
 module.exports.handleRecipientAnswer = (req, res, next) ->
 
     share = req.body
+
+    console.log JSON.stringify share
 
     # A correct answer must have the following attributes
     if utils.hasEmptyField share, ["id", "accepted"]

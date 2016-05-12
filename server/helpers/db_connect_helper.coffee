@@ -49,3 +49,4 @@ exports.db_replicator_connect = ->
         replicator = connection.database credentials.db
 
     return replicator
+

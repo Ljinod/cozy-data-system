@@ -27,6 +27,25 @@ onChange = (change) ->
             else
                 cb null, change.id
 
+replications = {}
+
+
+# Called each time a change occurs in the _replicator db
+onChange = (change) ->
+    if replications[change.id]?
+        cb = replications[change.id]
+        delete replications[change.id]
+
+        # Check the replication status
+        replicator.get change.id, (err, doc) ->
+            if err?
+                cb err
+            else if doc._replication_state is "error"
+                err = "Replication failed"
+                cb err
+            else
+                cb null, change.id
+
 
 # Get the Cozy url
 getDomain = (callback) ->
@@ -83,6 +102,7 @@ module.exports.notifyRecipient = (url, path, params, callback) ->
         return callback err if err?
 
         params.sharerUrl = domain
+<<<<<<< HEAD
 
         # Get the user name
         user.getUser (err, userInfos) ->
@@ -96,6 +116,11 @@ module.exports.notifyRecipient = (url, path, params, callback) ->
             remote = request.createClient url
             remote.post path, params, (err, result, body) ->
                 handleNotifyResponse err, result, body, callback
+=======
+        remote = request.createClient url
+        remote.post path, params, (err, result, body) ->
+            handleNotifyResponse err, result, body, callback
+>>>>>>> WIP - rebase foireux
 
 
 # Send a notification to a recipient url on the specified path
