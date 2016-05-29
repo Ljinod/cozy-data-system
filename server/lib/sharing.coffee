@@ -102,7 +102,6 @@ module.exports.notifyRecipient = (url, path, params, callback) ->
         return callback err if err?
 
         params.sharerUrl = domain
-<<<<<<< HEAD
 
         # Get the user name
         user.getUser (err, userInfos) ->
@@ -116,11 +115,6 @@ module.exports.notifyRecipient = (url, path, params, callback) ->
             remote = request.createClient url
             remote.post path, params, (err, result, body) ->
                 handleNotifyResponse err, result, body, callback
-=======
-        remote = request.createClient url
-        remote.post path, params, (err, result, body) ->
-            handleNotifyResponse err, result, body, callback
->>>>>>> WIP - rebase foireux
 
 
 # Send a notification to a recipient url on the specified path
